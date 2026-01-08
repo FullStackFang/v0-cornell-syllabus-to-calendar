@@ -201,28 +201,39 @@ export async function POST(req: Request) {
       messages: anthropicMessages,
     })
 
-    // Handle tool use loop
+    // Handle tool use loop - may have multiple tool calls per response
     while (response.stop_reason === "tool_use") {
-      const toolUseBlock = response.content.find((block): block is Anthropic.ToolUseBlock => block.type === "tool_use")
+      // Find ALL tool_use blocks in the response
+      const toolUseBlocks = response.content.filter(
+        (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
+      )
 
-      if (!toolUseBlock) break
+      if (toolUseBlocks.length === 0) break
 
-      const toolResult = await executeTool(toolUseBlock.name, toolUseBlock.input as Record<string, unknown>, accessToken)
+      // Execute all tools and collect results
+      const toolResults: Anthropic.ToolResultBlockParam[] = await Promise.all(
+        toolUseBlocks.map(async (toolUseBlock) => {
+          const toolResult = await executeTool(
+            toolUseBlock.name,
+            toolUseBlock.input as Record<string, unknown>,
+            accessToken
+          )
+          return {
+            type: "tool_result" as const,
+            tool_use_id: toolUseBlock.id,
+            content: JSON.stringify(toolResult),
+          }
+        })
+      )
 
-      // Add assistant response and tool result to messages
+      // Add assistant response and ALL tool results to messages
       anthropicMessages.push({
         role: "assistant",
         content: response.content,
       })
       anthropicMessages.push({
         role: "user",
-        content: [
-          {
-            type: "tool_result",
-            tool_use_id: toolUseBlock.id,
-            content: JSON.stringify(toolResult),
-          },
-        ],
+        content: toolResults,
       })
 
       // Get next response

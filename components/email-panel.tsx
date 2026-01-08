@@ -1,8 +1,12 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { X, Calendar, User, Mail } from "lucide-react"
+import { X, Calendar, User, Mail, ExternalLink } from "lucide-react"
 import type { EmailMessage } from "@/types"
+
+// Construct Gmail URL from threadId
+const getGmailUrl = (threadId: string) =>
+  `https://mail.google.com/mail/u/0/#inbox/${threadId}`
 
 // Re-export EmailMessage as EmailData for backwards compatibility
 export type EmailData = EmailMessage
@@ -31,9 +35,23 @@ export function EmailPanel({ email, onClose }: EmailPanelProps) {
             {email.subject || "(No subject)"}
           </h3>
         </div>
-        <Button variant="ghost" size="icon" className="shrink-0" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </Button>
+        <div className="flex gap-2 shrink-0">
+          {email.threadId && (
+            <Button variant="outline" size="sm" asChild>
+              <a
+                href={getGmailUrl(email.threadId)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <ExternalLink className="h-4 w-4 mr-1" />
+                Open in Gmail
+              </a>
+            </Button>
+          )}
+          <Button variant="ghost" size="icon" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Metadata */}
