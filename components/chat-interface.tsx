@@ -6,14 +6,16 @@ import { Input } from "@/components/ui/input"
 import { ChatMessage } from "@/components/chat-message"
 import { Send, Paperclip, Loader2 } from "lucide-react"
 import type { Message } from "ai"
-import type { SyllabusData } from "@/types"
+import type { SyllabusData, EmailMessage } from "@/types"
 
 interface ChatInterfaceProps {
   onFileUpload?: (file: File) => void
   onFindEmails?: (syllabus: SyllabusData) => void
+  onEmailSelect?: (email: EmailMessage) => void
+  onSyllabusData?: (syllabus: SyllabusData) => void
 }
 
-export function ChatInterface({ onFileUpload, onFindEmails }: ChatInterfaceProps) {
+export function ChatInterface({ onFileUpload, onFindEmails, onEmailSelect, onSyllabusData }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -54,45 +56,16 @@ export function ChatInterface({ onFileUpload, onFindEmails }: ChatInterfaceProps
         throw new Error("Failed to get response")
       }
 
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
-      let assistantContent = ""
+      const data = await response.json()
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: "",
+        content: data.text || "",
+        toolInvocations: data.toolInvocations,
       }
 
       setMessages((prev) => [...prev, assistantMessage])
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          const chunk = decoder.decode(value)
-          const lines = chunk.split("\n")
-
-          for (const line of lines) {
-            if (line.startsWith("0:")) {
-              try {
-                const text = JSON.parse(line.slice(2))
-                assistantContent += text
-                setMessages((prev) =>
-                  prev.map((msg) =>
-                    msg.id === assistantMessage.id
-                      ? { ...msg, content: assistantContent }
-                      : msg
-                  )
-                )
-              } catch {
-                // Skip parsing errors
-              }
-            }
-          }
-        }
-      }
     } catch (error) {
       console.error("Chat error:", error)
       setMessages((prev) => [
@@ -145,6 +118,9 @@ export function ChatInterface({ onFileUpload, onFindEmails }: ChatInterfaceProps
 
       const uploadData = await uploadRes.json()
       const syllabusData = uploadData.data
+
+      // Notify parent about syllabus data
+      onSyllabusData?.(syllabusData)
 
       // Format the parsed data as an assistant response
       const assistantMessage: Message = {
@@ -209,7 +185,7 @@ export function ChatInterface({ onFileUpload, onFindEmails }: ChatInterfaceProps
         ) : (
           <div className="divide-y divide-gray-200 dark:divide-gray-800">
             {messages.map((message) => (
-              <ChatMessage key={message.id} message={message} onFindEmails={onFindEmails} />
+              <ChatMessage key={message.id} message={message} onFindEmails={onFindEmails} onEmailSelect={onEmailSelect} />
             ))}
             {isLoading && (
               <div className="flex gap-3 p-4 bg-gray-50 dark:bg-gray-900">

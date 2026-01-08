@@ -4,7 +4,6 @@ import { useState } from "react"
 import { useSession, signIn, signOut } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { FileUploadZone } from "@/components/file-upload-zone"
 import { ChatInterface } from "@/components/chat-interface"
 import {
   Calendar,
@@ -19,31 +18,27 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import Image from "next/image"
-import { ClassEmailsPanel } from "@/components/class-emails-panel"
-import type { SyllabusData, GroupedEmails } from "@/types"
+import { RightPanel } from "@/components/right-panel"
+import type { SyllabusData, EmailMessage } from "@/types"
 
 export default function HomePage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const [isProcessing, setIsProcessing] = useState(false)
   const [syllabusData, setSyllabusData] = useState<SyllabusData | null>(null)
+  const [isAddingToCalendar, setIsAddingToCalendar] = useState(false)
 
-  // Email panel state
-  const [emailPanel, setEmailPanel] = useState<{
-    groupedEmails: GroupedEmails | null
-    isLoading: boolean
-    error: string | null
-    isOpen: boolean
-    courseName: string
-  }>({
-    groupedEmails: null,
-    isLoading: false,
-    error: null,
-    isOpen: false,
-    courseName: "",
-  })
+  // Right panel state
+  const [rightPanelTab, setRightPanelTab] = useState<"syllabus" | "emails">("syllabus")
 
-  // Handle file upload and navigate to review page
+  // Emails list (accumulated from chat searches)
+  const [emails, setEmails] = useState<EmailMessage[]>([])
+
+  // Selected email state
+  const [selectedEmail, setSelectedEmail] = useState<EmailMessage | null>(null)
+  const [isLoadingEmail, setIsLoadingEmail] = useState(false)
+
+  // Handle file upload - parse and show in right panel
   const handleFileSelect = async (file: File) => {
     setIsProcessing(true)
 
@@ -63,11 +58,9 @@ export default function HomePage() {
 
       const data = await res.json()
 
-      // Store in sessionStorage for the review page
-      sessionStorage.setItem("syllabusData", JSON.stringify(data.data))
-
-      // Navigate to review page
-      router.push("/review")
+      // Set syllabus data to show in right panel
+      setSyllabusData(data.data)
+      setRightPanelTab("syllabus")
     } catch (error) {
       console.error("Upload error:", error)
       alert(error instanceof Error ? error.message : "Failed to process syllabus. Please try again.")
@@ -76,52 +69,108 @@ export default function HomePage() {
     }
   }
 
-  // Function to search for course-related emails
-  const handleFindEmails = async (syllabus: SyllabusData) => {
-    setSyllabusData(syllabus) // Store syllabus for refresh
-    setEmailPanel(prev => ({
-      ...prev,
-      isOpen: true,
-      isLoading: true,
-      error: null,
-      courseName: `${syllabus.course.code}: ${syllabus.course.name}`,
-    }))
+  // Handle adding events to calendar
+  const handleAddToCalendar = async () => {
+    if (!syllabusData) return
+
+    setIsAddingToCalendar(true)
 
     try {
-      const res = await fetch("/api/email/course-search", {
+      const res = await fetch("/api/calendar/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ syllabusData: syllabus }),
+        body: JSON.stringify({ syllabusData }),
       })
 
       if (!res.ok) {
-        throw new Error("Failed to search emails")
+        throw new Error("Failed to create calendar events")
       }
 
       const data = await res.json()
-      setEmailPanel(prev => ({
-        ...prev,
-        groupedEmails: data.groupedEmails,
-        isLoading: false,
-      }))
+      alert(`Successfully created ${data.created} calendar events!`)
     } catch (error) {
-      console.error("Email search error:", error)
-      setEmailPanel(prev => ({
-        ...prev,
-        error: "Failed to search emails. Please try again.",
-        isLoading: false,
-      }))
+      console.error("Calendar sync error:", error)
+      alert("Failed to create calendar events. Please try again.")
+    } finally {
+      setIsAddingToCalendar(false)
     }
   }
 
-  const handleRefreshEmails = () => {
-    if (syllabusData) {
-      handleFindEmails(syllabusData)
+  // Store syllabus when parsed
+  const handleSyllabusData = (syllabus: SyllabusData) => {
+    setSyllabusData(syllabus)
+    setRightPanelTab("syllabus")
+  }
+
+  // Handle email selection from chat results - adds to email list and selects
+  const handleEmailSelect = async (email: EmailMessage) => {
+    // Add to emails list if not already there
+    setEmails(prev => {
+      const exists = prev.some(e => e.id === email.id)
+      if (exists) return prev
+      return [email, ...prev]
+    })
+
+    // Switch to emails tab
+    setRightPanelTab("emails")
+
+    // Set as selected and fetch full content
+    setSelectedEmail(email)
+    setIsLoadingEmail(true)
+
+    try {
+      const res = await fetch("/api/email/content", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId: email.id }),
+      })
+
+      if (!res.ok) {
+        throw new Error("Failed to fetch email")
+      }
+
+      const data = await res.json()
+
+      // Update the email in the list with full content
+      setEmails(prev => prev.map(e => e.id === email.id ? data.email : e))
+      setSelectedEmail(data.email)
+    } catch (error) {
+      console.error("Email fetch error:", error)
+      // Keep the email with just the snippet
+    } finally {
+      setIsLoadingEmail(false)
     }
   }
 
-  const handleCloseEmailPanel = () => {
-    setEmailPanel(prev => ({ ...prev, isOpen: false }))
+  // Handle selecting an email from the right panel list
+  const handleEmailSelectFromPanel = async (email: EmailMessage) => {
+    setSelectedEmail(email)
+
+    // If we don't have full body, fetch it
+    if (!email.body) {
+      setIsLoadingEmail(true)
+      try {
+        const res = await fetch("/api/email/content", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messageId: email.id }),
+        })
+
+        if (res.ok) {
+          const data = await res.json()
+          setEmails(prev => prev.map(e => e.id === email.id ? data.email : e))
+          setSelectedEmail(data.email)
+        }
+      } catch (error) {
+        console.error("Email fetch error:", error)
+      } finally {
+        setIsLoadingEmail(false)
+      }
+    }
+  }
+
+  const handleCloseSelectedEmail = () => {
+    setSelectedEmail(null)
   }
 
   // Loading state
@@ -243,39 +292,28 @@ export default function HomePage() {
 
       {/* Main Content */}
       <main className="flex-1 flex overflow-hidden">
-        {/* Left Panel - Upload + Chat */}
+        {/* Left Panel - Chat */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Upload Section */}
-          <div className="shrink-0 border-b border-border p-6">
-            <h2 className="text-lg font-semibold text-foreground mb-2">Upload Syllabus</h2>
-            <p className="text-sm text-muted-foreground mb-4">
-              Drop your course syllabus PDF and let AI extract all the important dates.
-            </p>
-            <FileUploadZone
-              onFileSelect={handleFileSelect}
-              isProcessing={isProcessing}
-            />
-          </div>
-
-          {/* Chat Section */}
-          <div className="flex-1 overflow-hidden">
-            <ChatInterface onFindEmails={handleFindEmails} />
-          </div>
+          <ChatInterface onEmailSelect={handleEmailSelect} onSyllabusData={handleSyllabusData} />
         </div>
 
-        {/* Right Panel - Email Panel */}
-        {emailPanel.isOpen && (
-          <div className="w-96 border-l border-border bg-background shrink-0 overflow-hidden">
-            <ClassEmailsPanel
-              groupedEmails={emailPanel.groupedEmails}
-              isLoading={emailPanel.isLoading}
-              error={emailPanel.error}
-              onRefresh={handleRefreshEmails}
-              onClose={handleCloseEmailPanel}
-              courseName={emailPanel.courseName}
-            />
-          </div>
-        )}
+        {/* Right Panel - Always visible tabbed panel */}
+        <div className="w-[420px] border-l border-border bg-background shrink-0 overflow-hidden">
+          <RightPanel
+            syllabusData={syllabusData}
+            onFileSelect={handleFileSelect}
+            isProcessing={isProcessing}
+            onAddToCalendar={handleAddToCalendar}
+            isAddingToCalendar={isAddingToCalendar}
+            emails={emails}
+            selectedEmail={selectedEmail}
+            isLoadingEmail={isLoadingEmail}
+            onEmailSelect={handleEmailSelectFromPanel}
+            onEmailClose={handleCloseSelectedEmail}
+            activeTab={rightPanelTab}
+            onTabChange={setRightPanelTab}
+          />
+        </div>
       </main>
     </div>
   )

@@ -193,6 +193,15 @@ export async function POST(req: Request) {
       content: m.content,
     }))
 
+    // Track all tool invocations for the frontend
+    const toolInvocations: Array<{
+      state: "result"
+      toolCallId: string
+      toolName: string
+      args: Record<string, unknown>
+      result: unknown
+    }> = []
+
     let response = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 4096,
@@ -218,6 +227,16 @@ export async function POST(req: Request) {
             toolUseBlock.input as Record<string, unknown>,
             accessToken
           )
+
+          // Track for frontend
+          toolInvocations.push({
+            state: "result",
+            toolCallId: toolUseBlock.id,
+            toolName: toolUseBlock.name,
+            args: toolUseBlock.input as Record<string, unknown>,
+            result: toolResult,
+          })
+
           return {
             type: "tool_result" as const,
             tool_use_id: toolUseBlock.id,
@@ -250,18 +269,13 @@ export async function POST(req: Request) {
     const textBlock = response.content.find((block): block is Anthropic.TextBlock => block.type === "text")
     const responseText = textBlock?.text || ""
 
-    // Return as streaming format expected by client
-    const encoder = new TextEncoder()
-    const stream = new ReadableStream({
-      start(controller) {
-        controller.enqueue(encoder.encode(`0:${JSON.stringify(responseText)}\n`))
-        controller.close()
-      },
-    })
-
-    return new Response(stream, {
+    // Return JSON response with text and tool invocations
+    return new Response(JSON.stringify({
+      text: responseText,
+      toolInvocations: toolInvocations.length > 0 ? toolInvocations : undefined,
+    }), {
       headers: {
-        "Content-Type": "text/plain; charset=utf-8",
+        "Content-Type": "application/json",
       },
     })
   } catch (error) {
