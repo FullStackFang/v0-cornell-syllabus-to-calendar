@@ -1,20 +1,20 @@
 "use client"
 
-import { useChat } from "ai/react"
-import { useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ChatMessage } from "@/components/chat-message"
 import { Send, Paperclip, Loader2 } from "lucide-react"
+import type { Message } from "ai"
 
 interface ChatInterfaceProps {
   onFileUpload?: (file: File) => void
 }
 
 export function ChatInterface({ onFileUpload }: ChatInterfaceProps) {
-  const { messages, input, handleInputChange, handleSubmit, isLoading, append } = useChat({
-    api: "/api/chat",
-  })
+  const [messages, setMessages] = useState<Message[]>([])
+  const [input, setInput] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -26,6 +26,85 @@ export function ChatInterface({ onFileUpload }: ChatInterfaceProps) {
   useEffect(() => {
     scrollToBottom()
   }, [messages, scrollToBottom])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!input.trim() || isLoading) return
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      content: input.trim(),
+    }
+
+    setMessages((prev) => [...prev, userMessage])
+    setInput("")
+    setIsLoading(true)
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [...messages, userMessage] }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to get response")
+      }
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      let assistantContent = ""
+
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: "",
+      }
+
+      setMessages((prev) => [...prev, assistantMessage])
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          const chunk = decoder.decode(value)
+          const lines = chunk.split("\n")
+
+          for (const line of lines) {
+            if (line.startsWith("0:")) {
+              try {
+                const text = JSON.parse(line.slice(2))
+                assistantContent += text
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMessage.id
+                      ? { ...msg, content: assistantContent }
+                      : msg
+                  )
+                )
+              } catch {
+                // Skip parsing errors
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Chat error:", error)
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: "Sorry, I encountered an error. Please try again.",
+        },
+      ])
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -42,10 +121,78 @@ export function ChatInterface({ onFileUpload }: ChatInterfaceProps) {
     const buffer = Buffer.from(arrayBuffer)
     const pdfText = buffer.toString("utf-8").replace(/[^\x20-\x7E\n]/g, " ")
 
-    append({
+    const userMessage: Message = {
+      id: Date.now().toString(),
       role: "user",
       content: `I've uploaded a syllabus PDF: "${file.name}". Please parse it and show me what you found.\n\n[Syllabus content]:\n${pdfText.substring(0, 10000)}`,
-    })
+    }
+
+    setMessages((prev) => [...prev, userMessage])
+    setIsLoading(true)
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [...messages, userMessage] }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to get response")
+      }
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      let assistantContent = ""
+
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: "",
+      }
+
+      setMessages((prev) => [...prev, assistantMessage])
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          const chunk = decoder.decode(value)
+          const lines = chunk.split("\n")
+
+          for (const line of lines) {
+            if (line.startsWith("0:")) {
+              try {
+                const text = JSON.parse(line.slice(2))
+                assistantContent += text
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMessage.id
+                      ? { ...msg, content: assistantContent }
+                      : msg
+                  )
+                )
+              } catch {
+                // Skip parsing errors
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Chat error:", error)
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: "Sorry, I encountered an error. Please try again.",
+        },
+      ])
+    } finally {
+      setIsLoading(false)
+    }
 
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
@@ -116,7 +263,7 @@ export function ChatInterface({ onFileUpload }: ChatInterfaceProps) {
           </Button>
           <Input
             value={input}
-            onChange={handleInputChange}
+            onChange={(e) => setInput(e.target.value)}
             placeholder="Ask about your syllabus, search emails, or create calendar events..."
             disabled={isLoading}
             className="flex-1"
