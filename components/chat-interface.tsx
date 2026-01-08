@@ -1,0 +1,135 @@
+"use client"
+
+import { useChat } from "ai/react"
+import { useRef, useEffect, useCallback } from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { ChatMessage } from "@/components/chat-message"
+import { Send, Paperclip, Loader2 } from "lucide-react"
+
+interface ChatInterfaceProps {
+  onFileUpload?: (file: File) => void
+}
+
+export function ChatInterface({ onFileUpload }: ChatInterfaceProps) {
+  const { messages, input, handleInputChange, handleSubmit, isLoading, append } = useChat({
+    api: "/api/chat",
+  })
+
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [])
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages, scrollToBottom])
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (file.type !== "application/pdf") {
+      alert("Please upload a PDF file")
+      return
+    }
+
+    onFileUpload?.(file)
+
+    const arrayBuffer = await file.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+    const pdfText = buffer.toString("utf-8").replace(/[^\x20-\x7E\n]/g, " ")
+
+    append({
+      role: "user",
+      content: `I've uploaded a syllabus PDF: "${file.name}". Please parse it and show me what you found.\n\n[Syllabus content]:\n${pdfText.substring(0, 10000)}`,
+    })
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto">
+        {messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center p-8">
+            <div className="bg-primary/10 rounded-full p-4 mb-4">
+              <Send className="h-8 w-8 text-primary" />
+            </div>
+            <h3 className="text-lg font-semibold mb-2">Syllabus Calendar Agent</h3>
+            <p className="text-muted-foreground max-w-md">
+              Upload a syllabus PDF or ask me to help with your course schedule. I can create
+              calendar events, search your emails for course-related content, and more.
+            </p>
+            <div className="flex gap-2 mt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Paperclip className="h-4 w-4 mr-2" />
+                Upload Syllabus
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-200 dark:divide-gray-800">
+            {messages.map((message) => (
+              <ChatMessage key={message.id} message={message} />
+            ))}
+            {isLoading && (
+              <div className="flex gap-3 p-4 bg-gray-50 dark:bg-gray-900">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700">
+                  <Loader2 className="h-4 w-4 animate-spin text-gray-600 dark:text-gray-300" />
+                </div>
+                <div className="flex items-center text-sm text-muted-foreground">
+                  Thinking...
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-gray-200 dark:border-gray-800 p-4">
+        <form onSubmit={handleSubmit} className="flex gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/pdf"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading}
+          >
+            <Paperclip className="h-4 w-4" />
+          </Button>
+          <Input
+            value={input}
+            onChange={handleInputChange}
+            placeholder="Ask about your syllabus, search emails, or create calendar events..."
+            disabled={isLoading}
+            className="flex-1"
+          />
+          <Button type="submit" disabled={isLoading || !input.trim()}>
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+          </Button>
+        </form>
+      </div>
+    </div>
+  )
+}

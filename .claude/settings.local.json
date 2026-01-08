@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm add:*)",
+      "Bash(npm install:*)",
+      "Bash(openssl rand:*)",
+      "Bash(npm run dev:*)",
+      "Bash(cat:*)"
+    ]
+  }
+}
