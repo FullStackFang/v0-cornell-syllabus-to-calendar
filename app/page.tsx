@@ -1,27 +1,130 @@
 "use client"
 
-import type React from "react"
-import Link from "next/link"
-import { useSession, signIn } from "next-auth/react"
-import { Button } from "@/components/ui/button"
-import { FileText, Sparkles, Calendar, MessageSquare } from "lucide-react"
+import { useState } from "react"
+import { useSession, signIn, signOut } from "next-auth/react"
 import { useRouter } from "next/navigation"
-import { useEffect } from "react"
+import { Button } from "@/components/ui/button"
+import { FileUploadZone } from "@/components/file-upload-zone"
+import { ChatInterface } from "@/components/chat-interface"
+import {
+  Calendar,
+  Sparkles,
+  User,
+  LogOut,
+} from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import Image from "next/image"
+import { ClassEmailsPanel } from "@/components/class-emails-panel"
+import type { SyllabusData, GroupedEmails } from "@/types"
 
-export default function LandingPage() {
+export default function HomePage() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [syllabusData, setSyllabusData] = useState<SyllabusData | null>(null)
 
-  useEffect(() => {
-    if (session) {
-      router.push("/dashboard")
+  // Email panel state
+  const [emailPanel, setEmailPanel] = useState<{
+    groupedEmails: GroupedEmails | null
+    isLoading: boolean
+    error: string | null
+    isOpen: boolean
+    courseName: string
+  }>({
+    groupedEmails: null,
+    isLoading: false,
+    error: null,
+    isOpen: false,
+    courseName: "",
+  })
+
+  // Handle file upload and navigate to review page
+  const handleFileSelect = async (file: File) => {
+    setIsProcessing(true)
+
+    const formData = new FormData()
+    formData.append("file", file)
+
+    try {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      })
+
+      if (!res.ok) {
+        const error = await res.json()
+        throw new Error(error.error || "Failed to process syllabus")
+      }
+
+      const data = await res.json()
+
+      // Store in sessionStorage for the review page
+      sessionStorage.setItem("syllabusData", JSON.stringify(data.data))
+
+      // Navigate to review page
+      router.push("/review")
+    } catch (error) {
+      console.error("Upload error:", error)
+      alert(error instanceof Error ? error.message : "Failed to process syllabus. Please try again.")
+    } finally {
+      setIsProcessing(false)
     }
-  }, [session, router])
-
-  const handleSignIn = () => {
-    signIn("google", { callbackUrl: "/dashboard" })
   }
 
+  // Function to search for course-related emails
+  const handleFindEmails = async (syllabus: SyllabusData) => {
+    setSyllabusData(syllabus) // Store syllabus for refresh
+    setEmailPanel(prev => ({
+      ...prev,
+      isOpen: true,
+      isLoading: true,
+      error: null,
+      courseName: `${syllabus.course.code}: ${syllabus.course.name}`,
+    }))
+
+    try {
+      const res = await fetch("/api/email/course-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ syllabusData: syllabus }),
+      })
+
+      if (!res.ok) {
+        throw new Error("Failed to search emails")
+      }
+
+      const data = await res.json()
+      setEmailPanel(prev => ({
+        ...prev,
+        groupedEmails: data.groupedEmails,
+        isLoading: false,
+      }))
+    } catch (error) {
+      console.error("Email search error:", error)
+      setEmailPanel(prev => ({
+        ...prev,
+        error: "Failed to search emails. Please try again.",
+        isLoading: false,
+      }))
+    }
+  }
+
+  const handleRefreshEmails = () => {
+    if (syllabusData) {
+      handleFindEmails(syllabusData)
+    }
+  }
+
+  const handleCloseEmailPanel = () => {
+    setEmailPanel(prev => ({ ...prev, isOpen: false }))
+  }
+
+  // Loading state
   if (status === "loading") {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -30,41 +133,46 @@ export default function LandingPage() {
     )
   }
 
-  return (
-    <div className="min-h-screen bg-background">
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50">
-        <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <Calendar className="w-4 h-4 text-primary-foreground" />
+  // Not signed in - show landing page
+  if (!session) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <header className="border-b border-border shrink-0">
+          <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+                <Calendar className="w-4 h-4 text-primary-foreground" />
+              </div>
+              <span className="font-semibold text-foreground">Syllabus Agent</span>
             </div>
-            <span className="font-semibold text-foreground">Syllabus Agent</span>
+            <Button size="sm" onClick={() => signIn("google")}>
+              Sign In
+            </Button>
           </div>
-          <Button size="sm" variant="ghost" onClick={handleSignIn}>
-            Sign In
-          </Button>
-        </div>
-      </nav>
+        </header>
 
-      {/* Hero Section */}
-      <main className="pt-32 pb-20 px-6">
-        <div className="max-w-3xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>AI-Powered for Cornell EMBA</span>
-          </div>
+        <main className="flex-1 flex flex-col items-center justify-center px-6 py-20">
+          <div className="max-w-2xl text-center">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>AI-Powered for Cornell EMBA</span>
+            </div>
 
-          <h1 className="text-5xl md:text-6xl font-semibold tracking-tight text-foreground text-balance leading-tight">
-            Turn your syllabi into <span className="text-primary">calendar events</span>
-          </h1>
+            <h1 className="text-4xl md:text-5xl font-semibold tracking-tight text-foreground leading-tight">
+              Turn your syllabi into{" "}
+              <span className="text-primary">calendar events</span>
+            </h1>
 
-          <p className="mt-6 text-lg text-muted-foreground max-w-xl mx-auto text-pretty leading-relaxed">
-            Upload a PDF, chat with an AI agent, and sync everything to Google Calendar in seconds.
-          </p>
+            <p className="mt-6 text-lg text-muted-foreground max-w-xl mx-auto leading-relaxed">
+              Upload a PDF, chat with an AI agent, search your emails, and sync
+              everything to Google Calendar in seconds.
+            </p>
 
-          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Button size="lg" className="h-12 px-8 text-base rounded-full" onClick={handleSignIn}>
+            <Button
+              size="lg"
+              className="mt-10 h-12 px-8 text-base rounded-full"
+              onClick={() => signIn("google")}
+            >
               <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                 <path
                   fill="currentColor"
@@ -86,95 +194,89 @@ export default function LandingPage() {
               Continue with Google
             </Button>
           </div>
-        </div>
+        </main>
+      </div>
+    )
+  }
 
-        {/* Features */}
-        <div className="max-w-4xl mx-auto mt-32">
-          <div className="grid md:grid-cols-4 gap-6">
-            <FeatureCard
-              icon={<FileText className="w-6 h-6" />}
-              title="Upload Syllabus"
-              description="Drag and drop any course syllabus PDF."
+  // Signed in - show main app with upload + chat
+  return (
+    <div className="h-screen flex flex-col bg-background">
+      {/* Header */}
+      <header className="shrink-0 bg-background/80 backdrop-blur-xl border-b border-border">
+        <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+          <a href="/" className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+              <Calendar className="w-4 h-4 text-primary-foreground" />
+            </div>
+            <span className="font-semibold text-foreground">Syllabus Agent</span>
+          </a>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="gap-2">
+                {session.user?.image ? (
+                  <Image
+                    src={session.user.image}
+                    alt={session.user.name || "User"}
+                    width={28}
+                    height={28}
+                    className="rounded-full"
+                  />
+                ) : (
+                  <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
+                    <User className="w-4 h-4 text-primary" />
+                  </div>
+                )}
+                <span className="hidden sm:inline">{session.user?.name || "User"}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => signOut()}>
+                <LogOut className="w-4 h-4 mr-2" />
+                Sign Out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="flex-1 flex overflow-hidden">
+        {/* Left Panel - Upload + Chat */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Upload Section */}
+          <div className="shrink-0 border-b border-border p-6">
+            <h2 className="text-lg font-semibold text-foreground mb-2">Upload Syllabus</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              Drop your course syllabus PDF and let AI extract all the important dates.
+            </p>
+            <FileUploadZone
+              onFileSelect={handleFileSelect}
+              isProcessing={isProcessing}
             />
-            <FeatureCard
-              icon={<MessageSquare className="w-6 h-6" />}
-              title="Chat with Agent"
-              description="Ask questions and get help managing your courses."
-            />
-            <FeatureCard
-              icon={<Sparkles className="w-6 h-6" />}
-              title="AI Extraction"
-              description="Claude AI parses dates, assignments, and schedules."
-            />
-            <FeatureCard
-              icon={<Calendar className="w-6 h-6" />}
-              title="Auto Calendar"
-              description="Events sync directly to your Google Calendar."
-            />
+          </div>
+
+          {/* Chat Section */}
+          <div className="flex-1 overflow-hidden">
+            <ChatInterface onFindEmails={handleFindEmails} />
           </div>
         </div>
 
-        {/* How it works */}
-        <div className="max-w-2xl mx-auto mt-32">
-          <h2 className="text-2xl font-semibold text-center text-foreground mb-12">How it works</h2>
-          <div className="space-y-8">
-            <Step
-              number="1"
-              title="Sign in with Google"
-              description="Connect your Google account to enable calendar and email access."
-            />
-            <Step
-              number="2"
-              title="Chat with the agent"
-              description="Upload your syllabus or ask questions about your courses."
-            />
-            <Step
-              number="3"
-              title="Search your emails"
-              description="Find course-related emails from professors and summarize threads."
-            />
-            <Step
-              number="4"
-              title="Sync to calendar"
-              description="All events appear in your Google Calendar instantly."
+        {/* Right Panel - Email Panel */}
+        {emailPanel.isOpen && (
+          <div className="w-96 border-l border-border bg-background shrink-0 overflow-hidden">
+            <ClassEmailsPanel
+              groupedEmails={emailPanel.groupedEmails}
+              isLoading={emailPanel.isLoading}
+              error={emailPanel.error}
+              onRefresh={handleRefreshEmails}
+              onClose={handleCloseEmailPanel}
+              courseName={emailPanel.courseName}
             />
           </div>
-        </div>
+        )}
       </main>
-
-      {/* Footer */}
-      <footer className="border-t border-border py-8 px-6">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
-          <span>Built for Cornell EMBA Students</span>
-          <span>Powered by Claude AI</span>
-        </div>
-      </footer>
-    </div>
-  )
-}
-
-function FeatureCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
-  return (
-    <div className="p-6 rounded-2xl bg-card border border-border hover:border-primary/20 transition-colors">
-      <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary mb-4">
-        {icon}
-      </div>
-      <h3 className="font-semibold text-foreground mb-2">{title}</h3>
-      <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
-    </div>
-  )
-}
-
-function Step({ number, title, description }: { number: string; title: string; description: string }) {
-  return (
-    <div className="flex gap-4">
-      <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-semibold shrink-0">
-        {number}
-      </div>
-      <div>
-        <h3 className="font-medium text-foreground">{title}</h3>
-        <p className="text-sm text-muted-foreground mt-0.5">{description}</p>
-      </div>
     </div>
   )
 }

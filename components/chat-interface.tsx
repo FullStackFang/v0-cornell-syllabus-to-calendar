@@ -6,12 +6,14 @@ import { Input } from "@/components/ui/input"
 import { ChatMessage } from "@/components/chat-message"
 import { Send, Paperclip, Loader2 } from "lucide-react"
 import type { Message } from "ai"
+import type { SyllabusData } from "@/types"
 
 interface ChatInterfaceProps {
   onFileUpload?: (file: File) => void
+  onFindEmails?: (syllabus: SyllabusData) => void
 }
 
-export function ChatInterface({ onFileUpload }: ChatInterfaceProps) {
+export function ChatInterface({ onFileUpload, onFindEmails }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -117,77 +119,58 @@ export function ChatInterface({ onFileUpload }: ChatInterfaceProps) {
 
     onFileUpload?.(file)
 
-    const arrayBuffer = await file.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
-    const pdfText = buffer.toString("utf-8").replace(/[^\x20-\x7E\n]/g, " ")
-
+    // Show user message about the upload
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
-      content: `I've uploaded a syllabus PDF: "${file.name}". Please parse it and show me what you found.\n\n[Syllabus content]:\n${pdfText.substring(0, 10000)}`,
+      content: `I've uploaded a syllabus PDF: "${file.name}". Please parse it and extract the course information.`,
     }
 
     setMessages((prev) => [...prev, userMessage])
     setIsLoading(true)
 
     try {
-      const response = await fetch("/api/chat", {
+      // Upload PDF to server for parsing
+      const formData = new FormData()
+      formData.append("file", file)
+
+      const uploadRes = await fetch("/api/upload", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [...messages, userMessage] }),
+        body: formData,
       })
 
-      if (!response.ok) {
-        throw new Error("Failed to get response")
+      if (!uploadRes.ok) {
+        throw new Error("Failed to process syllabus")
       }
 
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
-      let assistantContent = ""
+      const uploadData = await uploadRes.json()
+      const syllabusData = uploadData.data
 
+      // Format the parsed data as an assistant response
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: "",
+        content: `I've successfully parsed the syllabus! Here's what I found:\n\n**Course:** ${syllabusData.course.code} - ${syllabusData.course.name}\n**Instructor:** ${syllabusData.course.instructor}\n**Semester:** ${syllabusData.course.semester}\n**Credits:** ${syllabusData.course.credits}\n\n**Schedule:** ${syllabusData.schedule.length} class sessions found\n**Assignments:** ${syllabusData.assignments.length} assignments/exams found\n\nYou can ask me to create calendar events, search for related emails, or get more details about specific assignments.`,
+        toolInvocations: [
+          {
+            state: "result" as const,
+            toolCallId: `upload-${Date.now()}`,
+            toolName: "parse_syllabus",
+            args: { fileName: file.name },
+            result: { success: true, data: syllabusData },
+          },
+        ],
       }
 
       setMessages((prev) => [...prev, assistantMessage])
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          const chunk = decoder.decode(value)
-          const lines = chunk.split("\n")
-
-          for (const line of lines) {
-            if (line.startsWith("0:")) {
-              try {
-                const text = JSON.parse(line.slice(2))
-                assistantContent += text
-                setMessages((prev) =>
-                  prev.map((msg) =>
-                    msg.id === assistantMessage.id
-                      ? { ...msg, content: assistantContent }
-                      : msg
-                  )
-                )
-              } catch {
-                // Skip parsing errors
-              }
-            }
-          }
-        }
-      }
     } catch (error) {
-      console.error("Chat error:", error)
+      console.error("Upload error:", error)
       setMessages((prev) => [
         ...prev,
         {
           id: (Date.now() + 1).toString(),
           role: "assistant",
-          content: "Sorry, I encountered an error. Please try again.",
+          content: "Sorry, I couldn't process that PDF. Please make sure it's a valid syllabus document and try again.",
         },
       ])
     } finally {
@@ -226,7 +209,7 @@ export function ChatInterface({ onFileUpload }: ChatInterfaceProps) {
         ) : (
           <div className="divide-y divide-gray-200 dark:divide-gray-800">
             {messages.map((message) => (
-              <ChatMessage key={message.id} message={message} />
+              <ChatMessage key={message.id} message={message} onFindEmails={onFindEmails} />
             ))}
             {isLoading && (
               <div className="flex gap-3 p-4 bg-gray-50 dark:bg-gray-900">

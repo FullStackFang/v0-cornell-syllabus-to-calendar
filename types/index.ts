@@ -49,3 +49,29 @@ export interface UploadedSyllabus {
   eventsCreated: number
   data: SyllabusData
 }
+
+// Email categorization types
+export type EmailCategory = 'assignments' | 'announcements' | 'schedule_changes' | 'general'
+
+export interface EmailMessage {
+  id: string
+  threadId: string
+  subject: string
+  from: string
+  date: string
+  snippet: string
+  body?: string
+}
+
+export interface CategorizedEmail {
+  email: EmailMessage
+  category: EmailCategory
+  matchedKeywords: string[]
+}
+
+export interface GroupedEmails {
+  assignments: CategorizedEmail[]
+  announcements: CategorizedEmail[]
+  schedule_changes: CategorizedEmail[]
+  general: CategorizedEmail[]
+}

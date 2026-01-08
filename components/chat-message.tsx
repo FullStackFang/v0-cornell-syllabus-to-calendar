@@ -1,14 +1,25 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import { User, Bot, Calendar, Mail, FileText } from "lucide-react"
+import { User, Bot, Calendar, Mail, FileText, Search } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import type { Message } from "ai"
+import type { SyllabusData } from "@/types"
 
 interface ChatMessageProps {
   message: Message
+  onFindEmails?: (syllabus: SyllabusData) => void
 }
 
-function ToolResultCard({ toolName, result }: { toolName: string; result: unknown }) {
+function ToolResultCard({
+  toolName,
+  result,
+  onFindEmails,
+}: {
+  toolName: string
+  result: unknown
+  onFindEmails?: (syllabus: SyllabusData) => void
+}) {
   const data = result as Record<string, unknown>
 
   const icons: Record<string, typeof Calendar> = {
@@ -65,11 +76,7 @@ function ToolResultCard({ toolName, result }: { toolName: string; result: unknow
   }
 
   if (toolName === "parse_syllabus" && data.success) {
-    const syllabus = data.data as {
-      course: { name: string; code: string; instructor: string }
-      schedule: unknown[]
-      assignments: unknown[]
-    }
+    const syllabus = data.data as SyllabusData
     return (
       <div className="bg-purple-50 dark:bg-purple-950 border border-purple-200 dark:border-purple-800 rounded-lg p-3 mt-2">
         <div className="flex items-center gap-2 text-purple-700 dark:text-purple-300 font-medium mb-2">
@@ -81,6 +88,17 @@ function ToolResultCard({ toolName, result }: { toolName: string; result: unknow
           <div>Instructor: {syllabus.course.instructor}</div>
           <div>{syllabus.schedule.length} class sessions · {syllabus.assignments.length} assignments</div>
         </div>
+        {onFindEmails && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3 gap-2"
+            onClick={() => onFindEmails(syllabus)}
+          >
+            <Search className="h-3.5 w-3.5" />
+            Find Related Emails
+          </Button>
+        )}
       </div>
     )
   }
@@ -95,7 +113,7 @@ function ToolResultCard({ toolName, result }: { toolName: string; result: unknow
   )
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+export function ChatMessage({ message, onFindEmails }: ChatMessageProps) {
   const isUser = message.role === "user"
 
   return (
@@ -117,7 +135,11 @@ export function ChatMessage({ message }: ChatMessageProps) {
         {message.toolInvocations?.map((invocation, i) => (
           <div key={i}>
             {invocation.state === "result" && (
-              <ToolResultCard toolName={invocation.toolName} result={invocation.result} />
+              <ToolResultCard
+                toolName={invocation.toolName}
+                result={invocation.result}
+                onFindEmails={onFindEmails}
+              />
             )}
           </div>
         ))}

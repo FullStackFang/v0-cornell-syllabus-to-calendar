@@ -18,21 +18,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "File size must be less than 10MB" }, { status: 400 })
     }
 
-    // Convert PDF to text (using pdf-parse in production)
-    // For now, we'll extract text using ArrayBuffer
+    // Convert PDF to base64 and send to Claude for direct PDF reading
     const arrayBuffer = await file.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
+    const base64 = Buffer.from(arrayBuffer).toString("base64")
 
-    // In production, use pdf-parse:
-    // const pdfParse = require('pdf-parse')
-    // const pdfData = await pdfParse(buffer)
-    // const pdfText = pdfData.text
-
-    // For demo, use a simplified text extraction
-    const pdfText = buffer.toString("utf-8").replace(/[^\x20-\x7E\n]/g, " ")
-
-    // Extract structured data using Claude
-    const syllabusData = await extractSyllabusData(pdfText)
+    // Extract structured data using Claude's native PDF support
+    const syllabusData = await extractSyllabusData(base64, "pdf")
 
     return NextResponse.json({
       success: true,
