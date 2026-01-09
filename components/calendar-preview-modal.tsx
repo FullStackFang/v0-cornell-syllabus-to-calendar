@@ -10,6 +10,7 @@ interface CalendarPreviewModalProps {
   onConfirm: () => void
   syllabusData: SyllabusData
   isCreating?: boolean
+  mode?: "download" | "sync"
 }
 
 export function CalendarPreviewModal({
@@ -18,6 +19,7 @@ export function CalendarPreviewModal({
   onConfirm,
   syllabusData,
   isCreating = false,
+  mode = "download",
 }: CalendarPreviewModalProps) {
   const [downloadComplete, setDownloadComplete] = useState(false)
 
@@ -55,7 +57,7 @@ export function CalendarPreviewModal({
 
         <div className="p-4 overflow-y-auto max-h-[60vh]">
           <p className="text-sm text-muted-foreground mb-4">
-            {events.length} events will be exported to a calendar file
+            {events.length} events will be {mode === "download" ? "exported to a calendar file" : "added to your Google Calendar"}
           </p>
 
           <div className="space-y-3">
@@ -89,19 +91,35 @@ export function CalendarPreviewModal({
           <Button variant="outline" onClick={onClose} disabled={isCreating || downloadComplete}>
             Cancel
           </Button>
-          <Button onClick={handleDownloadICS} disabled={isCreating || downloadComplete}>
-            {downloadComplete ? (
-              <>
-                <Check className="w-4 h-4 mr-2" />
-                Downloaded
-              </>
-            ) : (
-              <>
-                <Download className="w-4 h-4 mr-2" />
-                Download .ics File
-              </>
-            )}
-          </Button>
+          {mode === "download" ? (
+            <Button onClick={handleDownloadICS} disabled={isCreating || downloadComplete}>
+              {downloadComplete ? (
+                <>
+                  <Check className="w-4 h-4 mr-2" />
+                  Downloaded
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4 mr-2" />
+                  Download .ics File
+                </>
+              )}
+            </Button>
+          ) : (
+            <Button onClick={onConfirm} disabled={isCreating}>
+              {isCreating ? (
+                <>
+                  <Calendar className="w-4 h-4 mr-2 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                <>
+                  <Calendar className="w-4 h-4 mr-2" />
+                  Add to Google Calendar
+                </>
+              )}
+            </Button>
+          )}
         </div>
       </div>
     </div>

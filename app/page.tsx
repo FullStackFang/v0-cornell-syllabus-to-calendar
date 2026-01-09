@@ -105,7 +105,8 @@ export default function HomePage() {
     setIsFindingEmails(true)
     try {
       const { course } = syllabusData
-      const message = `Search for emails related to course ${course.code}${course.name ? ` (${course.name})` : ''}. Look for any assignment announcements, schedule updates, or course-related communications.`
+      // Build a targeted search message focusing on course code
+      const message = `Search for emails containing the course code "${course.code}". This is for ${course.name || 'a course'}. Only return emails that mention this exact course code - do not search for general topics.`
 
       await chatRef.current.sendMessage(message)
     } finally {
@@ -270,7 +271,7 @@ export default function HomePage() {
     <div className="h-screen flex flex-col bg-background">
       {/* Header */}
       <header className="shrink-0 bg-background/80 backdrop-blur-xl border-b border-border">
-        <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+        <div className="px-6 h-14 flex items-center justify-between">
           <a href="/" className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <Calendar className="w-4 h-4 text-primary-foreground" />

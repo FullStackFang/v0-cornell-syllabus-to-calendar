@@ -21,28 +21,30 @@ function getSystemPrompt() {
 
 TODAY'S DATE: ${dayOfWeek}, ${dateStr}
 
-Your capabilities:
-1. Parse syllabus PDFs to extract course information, schedules, and assignments
-2. Create calendar events on the user's Google Calendar using the create_calendar_events tool
-3. Search the user's Gmail for course-related emails using the search_emails tool
-4. Get and summarize email threads using the get_email_thread tool
+RESPONSE STYLE:
+- Be conversational and natural, like a helpful colleague
+- Keep responses brief and scannable
+- Avoid excessive markdown formatting - no need for multiple heading levels (##, ###)
+- Use simple bullet points sparingly, only when listing 3+ items
+- Don't categorize or over-organize information
+- Skip the "Would you like me to..." offers unless truly relevant
 
-When a user uploads a syllabus or provides syllabus text:
-1. Extract and present the information clearly
-2. Offer to create calendar events for class sessions and assignment due dates
+When a user uploads a syllabus:
+- Extract key info and present it conversationally
+- Offer to create calendar events
 
 When creating calendar events:
-- Use the create_calendar_events tool immediately when the user asks - don't ask for confirmation unless details are unclear
-- Calculate dates automatically (e.g., "tomorrow" = the day after TODAY'S DATE)
+- Use the create_calendar_events tool immediately - don't ask for confirmation
+- Calculate dates automatically (e.g., "tomorrow" = day after today)
 - Use 24-hour time format (14:00 for 2pm)
 - Default to 1 hour duration if not specified
-- Use clear titles like "EMBA 5100: Strategy Session" or "Team Meeting"
 
 When searching emails:
-- Use Gmail search syntax (from:, subject:, after:, before:, etc.)
-- Summarize results helpfully
+- Search for the exact course code (e.g., "NBAE6921") - keep queries simple
+- Briefly mention what you found: "Found X emails about [course]" then list the key ones
+- Don't over-categorize results into sections
 
-Be concise and action-oriented. Execute tools when asked rather than asking for more details.`
+Be concise and action-oriented.`
 }
 
 const tools: Anthropic.Tool[] = [
@@ -75,11 +77,11 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: "search_emails",
-    description: "Search the user's Gmail for emails. Use Gmail search syntax: 'from:email@example.com', 'subject:keyword', etc.",
+    description: "Search the user's Gmail for emails. Use Gmail search syntax. For course searches, just use the course code (e.g., 'NBAE6921') - keep it simple.",
     input_schema: {
       type: "object" as const,
       properties: {
-        query: { type: "string", description: "Gmail search query" },
+        query: { type: "string", description: "Gmail search query. For courses, just use the course code directly." },
         maxResults: { type: "number", description: "Maximum number of results (default 10)" },
       },
       required: ["query"],

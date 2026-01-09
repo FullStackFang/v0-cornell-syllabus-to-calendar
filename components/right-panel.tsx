@@ -9,6 +9,7 @@ import {
   ChevronDown, ChevronRight, ChevronLeft, Trash2, Download
 } from "lucide-react"
 import { FileUploadZone } from "@/components/file-upload-zone"
+import { CalendarPreviewModal } from "@/components/calendar-preview-modal"
 import type { EmailMessage, SyllabusData } from "@/types"
 
 // Assignment type colors
@@ -206,6 +207,7 @@ export function RightPanel({
   const [emailTags, setEmailTags] = useState<Record<string, EmailTag>>({})
   const [scheduleExpanded, setScheduleExpanded] = useState(true)
   const [assignmentsExpanded, setAssignmentsExpanded] = useState(true)
+  const [showPreview, setShowPreview] = useState(false)
 
   const currentTab = onTabChange ? activeTab : internalTab
   const setTab = onTabChange || setInternalTab
@@ -313,7 +315,7 @@ export function RightPanel({
                 <div className="p-3 border-b border-border bg-background">
                   <div className="grid grid-cols-2 gap-2">
                     <Button
-                      onClick={onAddToCalendar}
+                      onClick={() => setShowPreview(true)}
                       disabled={isAddingToCalendar}
                       size="sm"
                     >
@@ -570,6 +572,21 @@ export function RightPanel({
           </div>
         )}
       </div>
+
+      {/* Calendar Preview Modal */}
+      {syllabusData && (
+        <CalendarPreviewModal
+          isOpen={showPreview}
+          onClose={() => setShowPreview(false)}
+          onConfirm={() => {
+            setShowPreview(false)
+            onAddToCalendar?.()
+          }}
+          syllabusData={syllabusData}
+          isCreating={isAddingToCalendar}
+          mode="sync"
+        />
+      )}
     </div>
   )
 }

@@ -13,7 +13,7 @@ export default function DashboardPage() {
     <div className="flex flex-col h-screen bg-background">
       {/* Header */}
       <header className="border-b border-border shrink-0">
-        <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
+        <div className="px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <Calendar className="w-4 h-4 text-primary-foreground" />
