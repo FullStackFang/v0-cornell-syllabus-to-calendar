@@ -271,6 +271,7 @@ export default function HomePage() {
                     width={28}
                     height={28}
                     className="rounded-full"
+                    referrerPolicy="no-referrer"
                   />
                 ) : (
                   <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
@@ -293,7 +294,7 @@ export default function HomePage() {
       {/* Main Content */}
       <main className="flex-1 flex overflow-hidden">
         {/* Left Panel - Chat */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
           <ChatInterface onEmailSelect={handleEmailSelect} onSyllabusData={handleSyllabusData} />
         </div>
 

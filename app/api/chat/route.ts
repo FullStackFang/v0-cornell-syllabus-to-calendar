@@ -10,7 +10,11 @@ const anthropic = new Anthropic()
 
 function getSystemPrompt() {
   const today = new Date()
-  const dateStr = today.toISOString().split('T')[0]
+  // Use local date, not UTC (toISOString returns UTC which can be off by a day)
+  const year = today.getFullYear()
+  const month = String(today.getMonth() + 1).padStart(2, '0')
+  const day = String(today.getDate()).padStart(2, '0')
+  const dateStr = `${year}-${month}-${day}`
   const dayOfWeek = today.toLocaleDateString('en-US', { weekday: 'long' })
 
   return `You are a helpful academic assistant for Cornell EMBA students. You help manage course schedules, parse syllabi, create calendar events, and find course-related emails.

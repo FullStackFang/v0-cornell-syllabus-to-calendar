@@ -76,9 +76,14 @@ function cleanEmailBody(body: string): string {
   if (isHtml) {
     // For HTML content, strip problematic elements but keep structure
     cleaned = cleaned
+      .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, "") // Remove head section
       .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "") // Remove style tags
       .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "") // Remove script tags
       .replace(/<!--[\s\S]*?-->/g, "") // Remove HTML comments
+      .replace(/<meta[^>]*\/?>/gi, "") // Remove meta tags
+      .replace(/<link[^>]*\/?>/gi, "") // Remove link tags
+      .replace(/<\/?html[^>]*>/gi, "") // Remove html wrapper
+      .replace(/<\/?body[^>]*>/gi, "") // Remove body wrapper
       .replace(/<img[^>]*>/gi, "") // Remove images (often tracking pixels)
       .replace(/style="[^"]*"/gi, "") // Remove inline styles
       .replace(/class="[^"]*"/gi, "") // Remove classes
@@ -247,7 +252,7 @@ export function RightPanel({
       {/* Tab Content */}
       <div className="flex-1 overflow-hidden flex flex-col">
         {currentTab === "syllabus" && (
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             {/* Upload Zone - compact */}
             <div className="p-3 border-b border-border">
               <FileUploadZone
@@ -316,7 +321,7 @@ export function RightPanel({
                     )}
                   </button>
                   {scheduleExpanded && (
-                    <div className="max-h-48 overflow-y-auto">
+                    <div className="max-h-48 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                       {syllabusData.schedule.map((session) => {
                         const date = new Date(session.date)
                         const day = date.getDate()
@@ -370,7 +375,7 @@ export function RightPanel({
                     )}
                   </button>
                   {assignmentsExpanded && (
-                    <div className="max-h-48 overflow-y-auto">
+                    <div className="max-h-48 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                       {syllabusData.assignments.map((assignment) => {
                         const typeColor = assignmentTypeColors[assignment.type] || assignmentTypeColors.homework
                         return (

@@ -22,14 +22,19 @@ export function ChatInterface({ onFileUpload, onFindEmails, onEmailSelect, onSyl
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const prevMessageCountRef = useRef(0)
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [])
 
+  // Only scroll when message count actually increases (new message added)
   useEffect(() => {
-    scrollToBottom()
-  }, [messages, scrollToBottom])
+    if (messages.length > prevMessageCountRef.current) {
+      scrollToBottom()
+    }
+    prevMessageCountRef.current = messages.length
+  }, [messages.length, scrollToBottom])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -159,8 +164,8 @@ export function ChatInterface({ onFileUpload, onFindEmails, onEmailSelect, onSyl
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto">
+    <div className="flex flex-col h-full min-w-0">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center p-8">
             <div className="bg-primary/10 rounded-full p-4 mb-4">
