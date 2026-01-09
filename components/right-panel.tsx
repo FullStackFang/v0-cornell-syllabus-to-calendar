@@ -171,6 +171,8 @@ interface RightPanelProps {
   isProcessing: boolean
   onAddToCalendar?: () => void
   isAddingToCalendar?: boolean
+  onFindRelatedEmails?: () => void
+  isFindingEmails?: boolean
 
   // Email data
   emails: EmailMessage[]
@@ -190,6 +192,8 @@ export function RightPanel({
   isProcessing,
   onAddToCalendar,
   isAddingToCalendar,
+  onFindRelatedEmails,
+  isFindingEmails,
   emails,
   selectedEmail,
   isLoadingEmail,
@@ -305,6 +309,37 @@ export function RightPanel({
                   </div>
                 </div>
 
+                {/* Action Bar - Side by side buttons */}
+                <div className="p-3 border-b border-border bg-background">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      onClick={onAddToCalendar}
+                      disabled={isAddingToCalendar}
+                      size="sm"
+                    >
+                      {isAddingToCalendar ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Calendar className="w-4 h-4 mr-2" />
+                      )}
+                      Add {syllabusData.schedule.length + syllabusData.assignments.filter(a => a.dueDate).length} Events
+                    </Button>
+                    <Button
+                      onClick={onFindRelatedEmails}
+                      disabled={isFindingEmails}
+                      variant="outline"
+                      size="sm"
+                    >
+                      {isFindingEmails ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Mail className="w-4 h-4 mr-2" />
+                      )}
+                      Find Emails
+                    </Button>
+                  </div>
+                </div>
+
                 {/* Schedule Section - Collapsible */}
                 <div className="border-b border-border">
                   <button
@@ -405,23 +440,6 @@ export function RightPanel({
                       })}
                     </div>
                   )}
-                </div>
-
-                {/* Action Bar - Sticky at bottom */}
-                <div className="mt-auto p-3 border-t border-border bg-background">
-                  <Button
-                    onClick={onAddToCalendar}
-                    disabled={isAddingToCalendar}
-                    className="w-full"
-                    size="sm"
-                  >
-                    {isAddingToCalendar ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    ) : (
-                      <Calendar className="w-4 h-4 mr-2" />
-                    )}
-                    Add {syllabusData.schedule.length + syllabusData.assignments.filter(a => a.dueDate).length} Events to Calendar
-                  </Button>
                 </div>
               </div>
             ) : (

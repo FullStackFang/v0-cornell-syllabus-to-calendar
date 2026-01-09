@@ -1,10 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useSession, signIn, signOut } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { ChatInterface } from "@/components/chat-interface"
+import { ChatInterface, ChatInterfaceHandle } from "@/components/chat-interface"
 import {
   Calendar,
   Sparkles,
@@ -24,9 +24,11 @@ import type { SyllabusData, EmailMessage } from "@/types"
 export default function HomePage() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const chatRef = useRef<ChatInterfaceHandle>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [syllabusData, setSyllabusData] = useState<SyllabusData | null>(null)
   const [isAddingToCalendar, setIsAddingToCalendar] = useState(false)
+  const [isFindingEmails, setIsFindingEmails] = useState(false)
 
   // Right panel state
   const [rightPanelTab, setRightPanelTab] = useState<"syllabus" | "emails">("syllabus")
@@ -93,6 +95,21 @@ export default function HomePage() {
       alert("Failed to create calendar events. Please try again.")
     } finally {
       setIsAddingToCalendar(false)
+    }
+  }
+
+  // Find related emails using syllabus data - sends a chat message
+  const handleFindRelatedEmails = async () => {
+    if (!syllabusData || !chatRef.current) return
+
+    setIsFindingEmails(true)
+    try {
+      const { course } = syllabusData
+      const message = `Search for emails related to course ${course.code}${course.name ? ` (${course.name})` : ''}. Look for any assignment announcements, schedule updates, or course-related communications.`
+
+      await chatRef.current.sendMessage(message)
+    } finally {
+      setIsFindingEmails(false)
     }
   }
 
@@ -295,7 +312,7 @@ export default function HomePage() {
       <main className="flex-1 flex overflow-hidden">
         {/* Left Panel - Chat */}
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-          <ChatInterface onEmailSelect={handleEmailSelect} onSyllabusData={handleSyllabusData} />
+          <ChatInterface ref={chatRef} onEmailSelect={handleEmailSelect} onSyllabusData={handleSyllabusData} />
         </div>
 
         {/* Right Panel - Always visible tabbed panel */}
@@ -306,6 +323,8 @@ export default function HomePage() {
             isProcessing={isProcessing}
             onAddToCalendar={handleAddToCalendar}
             isAddingToCalendar={isAddingToCalendar}
+            onFindRelatedEmails={handleFindRelatedEmails}
+            isFindingEmails={isFindingEmails}
             emails={emails}
             selectedEmail={selectedEmail}
             isLoadingEmail={isLoadingEmail}

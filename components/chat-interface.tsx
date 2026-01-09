@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ChatMessage } from "@/components/chat-message"
@@ -15,7 +15,14 @@ interface ChatInterfaceProps {
   onSyllabusData?: (syllabus: SyllabusData) => void
 }
 
-export function ChatInterface({ onFileUpload, onFindEmails, onEmailSelect, onSyllabusData }: ChatInterfaceProps) {
+export interface ChatInterfaceHandle {
+  sendMessage: (content: string) => Promise<void>
+}
+
+export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(function ChatInterface(
+  { onFileUpload, onFindEmails, onEmailSelect, onSyllabusData },
+  ref
+) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -35,6 +42,60 @@ export function ChatInterface({ onFileUpload, onFindEmails, onEmailSelect, onSyl
     }
     prevMessageCountRef.current = messages.length
   }, [messages.length, scrollToBottom])
+
+  // Programmatic message sending (exposed via ref)
+  const sendMessageProgrammatically = useCallback(async (content: string) => {
+    if (isLoading) return
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      content,
+    }
+
+    setMessages((prev) => [...prev, userMessage])
+    setIsLoading(true)
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [...messages, userMessage] }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to get response")
+      }
+
+      const data = await response.json()
+
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: data.text || "",
+        toolInvocations: data.toolInvocations,
+      }
+
+      setMessages((prev) => [...prev, assistantMessage])
+    } catch (error) {
+      console.error("Chat error:", error)
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: "Sorry, I encountered an error. Please try again.",
+        },
+      ])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [isLoading, messages])
+
+  // Expose sendMessage via ref
+  useImperativeHandle(ref, () => ({
+    sendMessage: sendMessageProgrammatically,
+  }), [sendMessageProgrammatically])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -243,4 +304,4 @@ export function ChatInterface({ onFileUpload, onFindEmails, onEmailSelect, onSyl
       </div>
     </div>
   )
-}
+})
