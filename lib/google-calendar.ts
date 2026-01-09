@@ -93,3 +93,43 @@ export async function deleteCalendarEvent(
   const calendar = getCalendarClient(accessToken)
   await calendar.events.delete({ calendarId, eventId })
 }
+
+export interface ListedCalendarEvent {
+  id: string
+  title: string
+  startDate: string
+  startTime?: string
+  endDate?: string
+  endTime?: string
+  location?: string
+  description?: string
+}
+
+export async function listCalendarEvents(
+  accessToken: string,
+  timeMin: string,
+  timeMax: string,
+  calendarId = "primary"
+): Promise<ListedCalendarEvent[]> {
+  const calendar = getCalendarClient(accessToken)
+
+  const response = await calendar.events.list({
+    calendarId,
+    timeMin,
+    timeMax,
+    singleEvents: true,
+    orderBy: "startTime",
+    maxResults: 50,
+  })
+
+  return (response.data.items || []).map(event => ({
+    id: event.id || "",
+    title: event.summary || "(No title)",
+    startDate: event.start?.date || event.start?.dateTime?.split("T")[0] || "",
+    startTime: event.start?.dateTime?.split("T")[1]?.substring(0, 5),
+    endDate: event.end?.date || event.end?.dateTime?.split("T")[0],
+    endTime: event.end?.dateTime?.split("T")[1]?.substring(0, 5),
+    location: event.location || undefined,
+    description: event.description || undefined,
+  }))
+}

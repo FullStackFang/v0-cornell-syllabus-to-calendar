@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { createBatchEvents } from "@/lib/google-calendar"
+import { createBatchEvents, listCalendarEvents } from "@/lib/google-calendar"
 import { searchEmails, getEmailThread, findPersonEmail } from "@/lib/gmail"
 
 export const maxDuration = 60
@@ -52,6 +52,12 @@ When inviting people to events:
 - If user says "invite [name]" without an email, use find_person_email tool first to look up their email
 - If find_person_email finds the email, create the event with that attendee
 - If not found, ask the user for the email address
+
+When user asks about their schedule or availability:
+- Use list_calendar_events to check what's on their calendar
+- For "am I free at X time?", list that day's events and check for conflicts
+- For "what's on my calendar today/tomorrow?", list those events
+- Present the schedule conversationally, not as a data dump
 
 Be concise and human.`
 }
@@ -117,6 +123,18 @@ const tools: Anthropic.Tool[] = [
         name: { type: "string", description: "Person's name to search for" },
       },
       required: ["name"],
+    },
+  },
+  {
+    name: "list_calendar_events",
+    description: "List the user's calendar events in a date range. Use this to check availability, find free time, see what's scheduled, or answer questions like 'what's on my calendar today?' or 'am I free at 3pm?'",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        startDate: { type: "string", description: "Start date in YYYY-MM-DD format" },
+        endDate: { type: "string", description: "End date in YYYY-MM-DD format (can be same as startDate for single day)" },
+      },
+      required: ["startDate", "endDate"],
     },
   },
 ]
@@ -221,6 +239,31 @@ async function executeTool(name: string, input: Record<string, unknown>, accessT
       } catch (error) {
         console.error("Find person email error:", error)
         return { success: false, error: "Failed to search for person's email" }
+      }
+    }
+    case "list_calendar_events": {
+      const startDate = input.startDate as string
+      const endDate = input.endDate as string
+      try {
+        const events = await listCalendarEvents(
+          accessToken,
+          `${startDate}T00:00:00-05:00`,
+          `${endDate}T23:59:59-05:00`
+        )
+        return {
+          success: true,
+          count: events.length,
+          events: events.map(e => ({
+            title: e.title,
+            startDate: e.startDate,
+            startTime: e.startTime,
+            endTime: e.endTime,
+            location: e.location,
+          })),
+        }
+      } catch (error) {
+        console.error("List calendar events error:", error)
+        return { success: false, error: "Failed to list calendar events" }
       }
     }
     default:
