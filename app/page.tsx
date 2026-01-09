@@ -139,9 +139,25 @@ export default function HomePage() {
 
     setIsFindingEmails(true)
     try {
-      const { course } = syllabusData
-      // Build a targeted search message focusing on course code
-      const message = `Search for emails containing the course code "${course.code}". This is for ${course.name || 'a course'}. Only return emails that mention this exact course code - do not search for general topics.`
+      const { course, assignments } = syllabusData
+
+      // Build search terms from syllabus
+      const searchTerms: string[] = []
+      if (course.code) searchTerms.push(course.code)
+      if (course.name) searchTerms.push(`"${course.name}"`)
+      if (course.instructor) searchTerms.push(course.instructor.split(' ').pop() || '') // Last name
+
+      // Add some assignment names for better matching
+      const assignmentNames = assignments.slice(0, 3).map(a => a.name).filter(Boolean)
+
+      const message = `Search my Gmail for emails related to this course:
+- Course: ${course.code} - ${course.name}
+- Instructor: ${course.instructor || 'Unknown'}
+- Key assignments: ${assignmentNames.join(', ') || 'None listed'}
+
+Try searching for: ${searchTerms.join(' OR ')}
+
+Group results by urgency - what's due today or soon first, then recent items, then older ones.`
 
       await chatRef.current.sendMessage(message)
     } finally {
