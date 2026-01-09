@@ -19,7 +19,14 @@ import {
 } from "@/components/ui/dropdown-menu"
 import Image from "next/image"
 import { RightPanel } from "@/components/right-panel"
-import type { SyllabusData, EmailMessage } from "@/types"
+import type { SyllabusData, EmailMessage, CalendarEvent } from "@/types"
+
+// Helper to calculate end time from start time and duration
+function calculateEndTime(startTime: string, durationHours: number): string {
+  const [hours, minutes] = startTime.split(":").map(Number)
+  const endHours = hours + durationHours
+  return `${String(endHours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`
+}
 
 export default function HomePage() {
   const { data: session, status } = useSession()
@@ -28,6 +35,7 @@ export default function HomePage() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [syllabusData, setSyllabusData] = useState<SyllabusData | null>(null)
   const [isAddingToCalendar, setIsAddingToCalendar] = useState(false)
+  const [eventsAdded, setEventsAdded] = useState(false)
   const [isFindingEmails, setIsFindingEmails] = useState(false)
 
   // Right panel state
@@ -78,21 +86,48 @@ export default function HomePage() {
     setIsAddingToCalendar(true)
 
     try {
+      // Convert syllabusData to CalendarEvent array
+      const events: CalendarEvent[] = []
+      const courseName = syllabusData.course.code
+
+      // Add class sessions
+      for (const session of syllabusData.schedule) {
+        events.push({
+          title: `${courseName}: ${session.topic}`,
+          description: `Class session for ${syllabusData.course.name}`,
+          startDate: session.date,
+          startTime: session.time,
+          endDate: session.date,
+          endTime: calculateEndTime(session.time, session.duration_hours),
+          location: session.location,
+        })
+      }
+
+      // Add assignment due dates
+      for (const assignment of syllabusData.assignments) {
+        if (assignment.dueDate) {
+          events.push({
+            title: `${courseName}: ${assignment.name} Due`,
+            description: `${assignment.type} - ${assignment.weight}`,
+            startDate: assignment.dueDate,
+            startTime: "23:59",
+          })
+        }
+      }
+
       const res = await fetch("/api/calendar/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ syllabusData }),
+        body: JSON.stringify({ events }),
       })
 
       if (!res.ok) {
         throw new Error("Failed to create calendar events")
       }
 
-      const data = await res.json()
-      alert(`Successfully created ${data.created} calendar events!`)
+      setEventsAdded(true)
     } catch (error) {
       console.error("Calendar sync error:", error)
-      alert("Failed to create calendar events. Please try again.")
     } finally {
       setIsAddingToCalendar(false)
     }
@@ -324,6 +359,7 @@ export default function HomePage() {
             isProcessing={isProcessing}
             onAddToCalendar={handleAddToCalendar}
             isAddingToCalendar={isAddingToCalendar}
+            eventsAdded={eventsAdded}
             onFindRelatedEmails={handleFindRelatedEmails}
             isFindingEmails={isFindingEmails}
             emails={emails}

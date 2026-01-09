@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import {
   FileText, Mail, X, ExternalLink, Tag, Loader2, Upload,
   BookOpen, Hash, User, MailIcon, Clock, MapPin, Calendar,
-  ChevronDown, ChevronRight, ChevronLeft, Trash2, Download
+  ChevronDown, ChevronRight, ChevronLeft, Trash2, Download, Check
 } from "lucide-react"
 import { FileUploadZone } from "@/components/file-upload-zone"
 import { CalendarPreviewModal } from "@/components/calendar-preview-modal"
@@ -172,6 +172,7 @@ interface RightPanelProps {
   isProcessing: boolean
   onAddToCalendar?: () => void
   isAddingToCalendar?: boolean
+  eventsAdded?: boolean
   onFindRelatedEmails?: () => void
   isFindingEmails?: boolean
 
@@ -193,6 +194,7 @@ export function RightPanel({
   isProcessing,
   onAddToCalendar,
   isAddingToCalendar,
+  eventsAdded,
   onFindRelatedEmails,
   isFindingEmails,
   emails,
@@ -316,15 +318,26 @@ export function RightPanel({
                   <div className="grid grid-cols-2 gap-2">
                     <Button
                       onClick={() => setShowPreview(true)}
-                      disabled={isAddingToCalendar}
+                      disabled={isAddingToCalendar || eventsAdded}
                       size="sm"
+                      variant={eventsAdded ? "outline" : "default"}
                     >
-                      {isAddingToCalendar ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      {eventsAdded ? (
+                        <>
+                          <Check className="w-4 h-4 mr-2 text-green-600" />
+                          Events Added
+                        </>
+                      ) : isAddingToCalendar ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Adding...
+                        </>
                       ) : (
-                        <Calendar className="w-4 h-4 mr-2" />
+                        <>
+                          <Calendar className="w-4 h-4 mr-2" />
+                          Add {syllabusData.schedule.length + syllabusData.assignments.filter(a => a.dueDate).length} Events
+                        </>
                       )}
-                      Add {syllabusData.schedule.length + syllabusData.assignments.filter(a => a.dueDate).length} Events
                     </Button>
                     <Button
                       onClick={onFindRelatedEmails}
