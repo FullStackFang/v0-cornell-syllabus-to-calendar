@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { createBatchEvents } from "@/lib/google-calendar"
-import { searchEmails, getEmailThread } from "@/lib/gmail"
+import { searchEmails, getEmailThread, findPersonEmail } from "@/lib/gmail"
 
 export const maxDuration = 60
 
@@ -47,6 +47,12 @@ When creating calendar events:
 - Calculate dates automatically (e.g., "tomorrow" = day after today)
 - Use 24-hour time format (14:00 for 2pm)
 
+When inviting people to events:
+- If user provides an email address, add it to the attendees array
+- If user says "invite [name]" without an email, use find_person_email tool first to look up their email
+- If find_person_email finds the email, create the event with that attendee
+- If not found, ask the user for the email address
+
 Be concise and human.`
 }
 
@@ -70,6 +76,7 @@ const tools: Anthropic.Tool[] = [
               endDate: { type: "string", description: "End date in YYYY-MM-DD format (usually same as startDate)" },
               endTime: { type: "string", description: "End time in HH:MM format (24-hour), e.g., '15:00' for 3pm" },
               location: { type: "string", description: "Event location" },
+              attendees: { type: "array", items: { type: "string" }, description: "Email addresses of people to invite" },
             },
             required: ["title", "startDate"],
           },
@@ -101,6 +108,17 @@ const tools: Anthropic.Tool[] = [
       required: ["threadId"],
     },
   },
+  {
+    name: "find_person_email",
+    description: "Find someone's email address by searching past emails with them. Use this when the user wants to invite someone by name (e.g., 'invite Cristian') but didn't provide their email.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string", description: "Person's name to search for" },
+      },
+      required: ["name"],
+    },
+  },
 ]
 
 async function executeTool(name: string, input: Record<string, unknown>, accessToken: string) {
@@ -116,6 +134,7 @@ async function executeTool(name: string, input: Record<string, unknown>, accessT
         endDate?: string
         endTime?: string
         location?: string
+        attendees?: string[]
       }>
 
       // Transform events to match the CalendarEvent type
@@ -127,6 +146,7 @@ async function executeTool(name: string, input: Record<string, unknown>, accessT
         endDate: e.endDate || e.startDate,
         endTime: e.endTime,
         location: e.location,
+        attendees: e.attendees,
       }))
 
       try {
@@ -178,6 +198,29 @@ async function executeTool(name: string, input: Record<string, unknown>, accessT
       } catch (error) {
         console.error("Get thread error:", error)
         return { success: false, error: "Failed to get email thread" }
+      }
+    }
+    case "find_person_email": {
+      const name = input.name as string
+      try {
+        const result = await findPersonEmail(accessToken, name)
+        if (result) {
+          return {
+            success: true,
+            found: true,
+            email: result.email,
+            fullName: result.name,
+          }
+        } else {
+          return {
+            success: true,
+            found: false,
+            message: `Could not find email for "${name}" in your past emails. Ask the user for their email address.`,
+          }
+        }
+      } catch (error) {
+        console.error("Find person email error:", error)
+        return { success: false, error: "Failed to search for person's email" }
       }
     }
     default:

@@ -40,6 +40,7 @@ export interface CalendarEvent {
   endDate?: string
   endTime?: string
   location?: string
+  attendees?: string[]
 }
 
 export interface UploadedSyllabus {

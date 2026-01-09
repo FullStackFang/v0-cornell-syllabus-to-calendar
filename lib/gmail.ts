@@ -137,3 +137,50 @@ export async function getEmailContent(
     body: extractBody(msg.data.payload as any),
   }
 }
+
+// Extract email address from "Name <email@domain.com>" format
+function extractEmailFromHeader(fromHeader: string): string | null {
+  const emailMatch = fromHeader.match(/<([^>]+)>/)
+  if (emailMatch) {
+    return emailMatch[1]
+  }
+  // If no angle brackets, check if the whole thing is an email
+  if (fromHeader.includes("@")) {
+    return fromHeader.trim()
+  }
+  return null
+}
+
+export async function findPersonEmail(
+  accessToken: string,
+  name: string
+): Promise<{ email: string; name: string } | null> {
+  // First, search for emails FROM this person
+  const fromResults = await searchEmails(accessToken, `from:${name}`, 5)
+  if (fromResults.length > 0) {
+    const email = extractEmailFromHeader(fromResults[0].from)
+    if (email) {
+      return { email, name: fromResults[0].from.replace(/<[^>]+>/, "").trim() }
+    }
+  }
+
+  // If not found, search for emails TO this person (in sent mail)
+  const toResults = await searchEmails(accessToken, `to:${name}`, 5)
+  if (toResults.length > 0) {
+    // For sent emails, we need to get the full message to find the To header
+    const gmail = getGmailClient(accessToken)
+    const detail = await gmail.users.messages.get({
+      userId: "me",
+      id: toResults[0].id,
+      format: "metadata",
+      metadataHeaders: ["To"],
+    })
+    const toHeader = extractHeader(detail.data.payload?.headers || [], "To")
+    const email = extractEmailFromHeader(toHeader)
+    if (email) {
+      return { email, name: toHeader.replace(/<[^>]+>/, "").trim() }
+    }
+  }
+
+  return null
+}

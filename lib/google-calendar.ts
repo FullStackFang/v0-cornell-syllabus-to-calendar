@@ -22,6 +22,7 @@ export interface GoogleCalendarEvent {
     date?: string
     timeZone?: string
   }
+  attendees?: { email: string }[]
 }
 
 export async function createCalendarEvent(
@@ -48,6 +49,7 @@ export async function createCalendarEvent(
     end: event.endTime
       ? { dateTime: endDateTime, timeZone: "America/New_York" }
       : { date: endDateTime },
+    attendees: event.attendees?.map(email => ({ email })),
   }
 
   const response = await calendar.events.insert({
