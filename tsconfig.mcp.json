@@ -1,0 +1,44 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "outDir": "./dist",
+    "rootDir": ".",
+    "strict": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": false,
+    "sourceMap": true,
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "noImplicitAny": false,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": [
+    "mcp/**/*.ts",
+    "lib/gmail.ts",
+    "lib/google-calendar.ts",
+    "lib/drive.ts",
+    "lib/knowledge-base.ts",
+    "lib/course-config.ts",
+    "lib/encryption.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "app",
+    "components",
+    "lib/auth.ts",
+    "lib/agent/**",
+    "lib/anthropic.ts",
+    "lib/email-categorization.ts",
+    "lib/agent-decision.ts"
+  ]
+}

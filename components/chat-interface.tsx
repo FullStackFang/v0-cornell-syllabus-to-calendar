@@ -13,6 +13,7 @@ interface ChatInterfaceProps {
   onFindEmails?: (syllabus: SyllabusData) => void
   onEmailSelect?: (email: EmailMessage) => void
   onSyllabusData?: (syllabus: SyllabusData) => void
+  syllabusData?: SyllabusData | null
 }
 
 export interface ChatInterfaceHandle {
@@ -20,7 +21,7 @@ export interface ChatInterfaceHandle {
 }
 
 export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(function ChatInterface(
-  { onFileUpload, onFindEmails, onEmailSelect, onSyllabusData },
+  { onFileUpload, onFindEmails, onEmailSelect, onSyllabusData, syllabusData },
   ref
 ) {
   const [messages, setMessages] = useState<Message[]>([])
@@ -60,7 +61,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [...messages, userMessage] }),
+        body: JSON.stringify({ messages: [...messages, userMessage], syllabusData }),
       })
 
       if (!response.ok) {
@@ -90,7 +91,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     } finally {
       setIsLoading(false)
     }
-  }, [isLoading, messages])
+  }, [isLoading, messages, syllabusData])
 
   // Expose sendMessage via ref
   useImperativeHandle(ref, () => ({
@@ -115,7 +116,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [...messages, userMessage] }),
+        body: JSON.stringify({ messages: [...messages, userMessage], syllabusData }),
       })
 
       if (!response.ok) {

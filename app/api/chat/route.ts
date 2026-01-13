@@ -2,13 +2,19 @@ import Anthropic from "@anthropic-ai/sdk"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { createBatchEvents, listCalendarEvents } from "@/lib/google-calendar"
-import { searchEmails, getEmailThread, findPersonEmail } from "@/lib/gmail"
+import { searchEmails, getEmailThread, findPersonEmail, sendEmail, createDraft } from "@/lib/gmail"
 
 export const maxDuration = 60
 
 const anthropic = new Anthropic()
 
-function getSystemPrompt() {
+interface SyllabusDataParam {
+  course: { code?: string; name?: string; instructor?: string; email?: string; semester?: string; credits?: string }
+  schedule: Array<{ date: string; time: string; topic: string; location?: string; duration_hours?: number }>
+  assignments: Array<{ name: string; dueDate?: string; type?: string; weight?: string }>
+}
+
+function getSystemPrompt(syllabusData?: SyllabusDataParam) {
   const today = new Date()
   // Use local date, not UTC (toISOString returns UTC which can be off by a day)
   const year = today.getFullYear()
@@ -17,7 +23,7 @@ function getSystemPrompt() {
   const dateStr = `${year}-${month}-${day}`
   const dayOfWeek = today.toLocaleDateString('en-US', { weekday: 'long' })
 
-  return `You are a helpful academic assistant for Cornell EMBA students. You help manage course schedules, parse syllabi, create calendar events, and find course-related emails.
+  let basePrompt = `You are a helpful academic assistant for Cornell EMBA students. You help manage course schedules, parse syllabi, create calendar events, and find course-related emails.
 
 TODAY'S DATE: ${dayOfWeek}, ${dateStr}
 
@@ -60,6 +66,33 @@ When user asks about their schedule or availability:
 - Present the schedule conversationally, not as a data dump
 
 Be concise and human.`
+
+  if (syllabusData) {
+    const schedulePreview = syllabusData.schedule?.slice(0, 5).map(s => `- ${s.date}: ${s.topic}`).join('\n') || 'None'
+    const moreSessionsNote = (syllabusData.schedule?.length || 0) > 5
+      ? `\n... and ${syllabusData.schedule.length - 5} more sessions`
+      : ''
+    const assignmentsList = syllabusData.assignments?.map(a =>
+      `- ${a.name}${a.dueDate ? ` (due ${a.dueDate})` : ''}${a.weight ? ` - ${a.weight}` : ''}`
+    ).join('\n') || 'None'
+
+    basePrompt += `
+
+CURRENT UPLOADED SYLLABUS:
+Course: ${syllabusData.course?.code || 'N/A'} - ${syllabusData.course?.name || 'Unknown'}
+Instructor: ${syllabusData.course?.instructor || 'Unknown'}
+Semester: ${syllabusData.course?.semester || 'Unknown'}
+
+Schedule (${syllabusData.schedule?.length || 0} sessions):
+${schedulePreview}${moreSessionsNote}
+
+Assignments (${syllabusData.assignments?.length || 0} items):
+${assignmentsList}
+
+You have access to this syllabus data. Answer questions about the course using this information.`
+  }
+
+  return basePrompt
 }
 
 const tools: Anthropic.Tool[] = [
@@ -123,6 +156,33 @@ const tools: Anthropic.Tool[] = [
         name: { type: "string", description: "Person's name to search for" },
       },
       required: ["name"],
+    },
+  },
+  {
+    name: "send_email",
+    description: "Send an email to someone. Use this to reply to students or send messages. Always confirm with the user before sending.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        to: { type: "string", description: "Recipient email address" },
+        subject: { type: "string", description: "Email subject line" },
+        body: { type: "string", description: "Email body text" },
+        threadId: { type: "string", description: "Optional thread ID to reply to an existing conversation" },
+      },
+      required: ["to", "subject", "body"],
+    },
+  },
+  {
+    name: "create_draft",
+    description: "Create an email draft for the user to review before sending. Use this when drafting responses that need approval.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        to: { type: "string", description: "Recipient email address" },
+        subject: { type: "string", description: "Email subject line" },
+        body: { type: "string", description: "Email body text" },
+      },
+      required: ["to", "subject", "body"],
     },
   },
   {
@@ -241,6 +301,41 @@ async function executeTool(name: string, input: Record<string, unknown>, accessT
         return { success: false, error: "Failed to search for person's email" }
       }
     }
+    case "send_email": {
+      const to = input.to as string
+      const subject = input.subject as string
+      const body = input.body as string
+      const threadId = input.threadId as string | undefined
+      try {
+        const result = await sendEmail(accessToken, to, subject, body, threadId)
+        return {
+          success: true,
+          message: `Email sent successfully to ${to}`,
+          messageId: result.id,
+          threadId: result.threadId,
+        }
+      } catch (error) {
+        console.error("Send email error:", error)
+        return { success: false, error: "Failed to send email" }
+      }
+    }
+    case "create_draft": {
+      const to = input.to as string
+      const subject = input.subject as string
+      const body = input.body as string
+      try {
+        const result = await createDraft(accessToken, to, subject, body)
+        return {
+          success: true,
+          message: `Draft created successfully. You can find it in your Gmail drafts.`,
+          draftId: result.draftId,
+          messageId: result.id,
+        }
+      } catch (error) {
+        console.error("Create draft error:", error)
+        return { success: false, error: "Failed to create draft" }
+      }
+    }
     case "list_calendar_events": {
       const startDate = input.startDate as string
       const endDate = input.endDate as string
@@ -278,7 +373,7 @@ export async function POST(req: Request) {
     return new Response("Unauthorized", { status: 401 })
   }
 
-  const { messages } = await req.json()
+  const { messages, syllabusData } = await req.json()
   const accessToken = session.accessToken
 
   try {
@@ -300,7 +395,7 @@ export async function POST(req: Request) {
     let response = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 4096,
-      system: getSystemPrompt(),
+      system: getSystemPrompt(syllabusData),
       tools,
       messages: anthropicMessages,
     })
@@ -354,7 +449,7 @@ export async function POST(req: Request) {
       response = await anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
         max_tokens: 4096,
-        system: getSystemPrompt(),
+        system: getSystemPrompt(syllabusData),
         tools,
         messages: anthropicMessages,
       })

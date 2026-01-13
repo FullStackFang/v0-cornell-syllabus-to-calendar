@@ -184,3 +184,282 @@ export async function findPersonEmail(
 
   return null
 }
+
+// Encode message for Gmail API (RFC 2822 format, base64url encoded)
+function encodeMessage(message: string): string {
+  return Buffer.from(message)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "")
+}
+
+// Send an email
+export async function sendEmail(
+  accessToken: string,
+  to: string,
+  subject: string,
+  body: string,
+  threadId?: string
+): Promise<{ id: string; threadId: string }> {
+  const gmail = getGmailClient(accessToken)
+
+  const message = [
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    "Content-Type: text/plain; charset=utf-8",
+    "",
+    body
+  ].join("\n")
+
+  const response = await gmail.users.messages.send({
+    userId: "me",
+    requestBody: {
+      raw: encodeMessage(message),
+      threadId: threadId
+    }
+  })
+
+  return { id: response.data.id!, threadId: response.data.threadId! }
+}
+
+// Create an email draft
+export async function createDraft(
+  accessToken: string,
+  to: string,
+  subject: string,
+  body: string
+): Promise<{ id: string; draftId: string }> {
+  const gmail = getGmailClient(accessToken)
+
+  const message = [
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    "Content-Type: text/plain; charset=utf-8",
+    "",
+    body
+  ].join("\n")
+
+  const response = await gmail.users.drafts.create({
+    userId: "me",
+    requestBody: {
+      message: { raw: encodeMessage(message) }
+    }
+  })
+
+  return { id: response.data.message!.id!, draftId: response.data.id! }
+}
+
+// Send a reply to an email thread with proper threading headers
+export async function sendReply(
+  accessToken: string,
+  originalEmail: EmailMessage,
+  replyBody: string
+): Promise<{ id: string; threadId: string }> {
+  const gmail = getGmailClient(accessToken)
+
+  // Extract the sender's email for replying
+  const toEmail = extractEmailFromHeader(originalEmail.from) || originalEmail.from
+
+  // Create reply subject (add Re: if not already present)
+  const replySubject = originalEmail.subject.startsWith("Re:")
+    ? originalEmail.subject
+    : `Re: ${originalEmail.subject}`
+
+  const message = [
+    `To: ${toEmail}`,
+    `Subject: ${replySubject}`,
+    `In-Reply-To: ${originalEmail.id}`,
+    `References: ${originalEmail.id}`,
+    "Content-Type: text/plain; charset=utf-8",
+    "",
+    replyBody
+  ].join("\n")
+
+  const response = await gmail.users.messages.send({
+    userId: "me",
+    requestBody: {
+      raw: encodeMessage(message),
+      threadId: originalEmail.threadId
+    }
+  })
+
+  return { id: response.data.id!, threadId: response.data.threadId! }
+}
+
+// Set up Gmail push notifications via Pub/Sub
+export async function setupGmailWatch(
+  accessToken: string,
+  topicName: string,
+  labelIds: string[] = ["INBOX"]
+): Promise<{ historyId: string; expiration: string }> {
+  const gmail = getGmailClient(accessToken)
+
+  const response = await gmail.users.watch({
+    userId: "me",
+    requestBody: {
+      topicName,
+      labelIds,
+    },
+  })
+
+  return {
+    historyId: response.data.historyId!,
+    expiration: response.data.expiration!,
+  }
+}
+
+// Stop Gmail push notifications
+export async function stopGmailWatch(accessToken: string): Promise<void> {
+  const gmail = getGmailClient(accessToken)
+  await gmail.users.stop({ userId: "me" })
+}
+
+// Get new messages since a history ID
+export async function getNewMessagesSinceHistoryId(
+  accessToken: string,
+  startHistoryId: string
+): Promise<EmailMessage[]> {
+  const gmail = getGmailClient(accessToken)
+
+  try {
+    const response = await gmail.users.history.list({
+      userId: "me",
+      startHistoryId,
+      historyTypes: ["messageAdded"],
+    })
+
+    const history = response.data.history || []
+    const messageIds = new Set<string>()
+
+    for (const h of history) {
+      if (h.messagesAdded) {
+        for (const msg of h.messagesAdded) {
+          if (msg.message?.id) {
+            messageIds.add(msg.message.id)
+          }
+        }
+      }
+    }
+
+    // Fetch full content for each new message
+    const messages: EmailMessage[] = []
+    for (const msgId of messageIds) {
+      const email = await getEmailContent(accessToken, msgId)
+      messages.push(email)
+    }
+
+    return messages
+  } catch (error: any) {
+    // If history is too old, Gmail returns 404
+    if (error.code === 404) {
+      console.warn("History ID expired, need to resync")
+      return []
+    }
+    throw error
+  }
+}
+
+// Create or get a label
+export async function getOrCreateLabel(
+  accessToken: string,
+  labelName: string
+): Promise<string> {
+  const gmail = getGmailClient(accessToken)
+
+  // First, try to find existing label
+  const labelsResponse = await gmail.users.labels.list({ userId: "me" })
+  const existingLabel = labelsResponse.data.labels?.find(
+    (l) => l.name === labelName
+  )
+
+  if (existingLabel) {
+    return existingLabel.id!
+  }
+
+  // Create new label
+  const createResponse = await gmail.users.labels.create({
+    userId: "me",
+    requestBody: {
+      name: labelName,
+      labelListVisibility: "labelShow",
+      messageListVisibility: "show",
+    },
+  })
+
+  return createResponse.data.id!
+}
+
+// Add label to a message
+export async function addLabelToMessage(
+  accessToken: string,
+  messageId: string,
+  labelId: string
+): Promise<void> {
+  const gmail = getGmailClient(accessToken)
+
+  await gmail.users.messages.modify({
+    userId: "me",
+    id: messageId,
+    requestBody: {
+      addLabelIds: [labelId],
+    },
+  })
+}
+
+// Remove label from a message
+export async function removeLabelFromMessage(
+  accessToken: string,
+  messageId: string,
+  labelId: string
+): Promise<void> {
+  const gmail = getGmailClient(accessToken)
+
+  await gmail.users.messages.modify({
+    userId: "me",
+    id: messageId,
+    requestBody: {
+      removeLabelIds: [labelId],
+    },
+  })
+}
+
+// Mark a course question as answered
+export async function markQuestionAnswered(
+  accessToken: string,
+  messageId: string,
+  courseId: string
+): Promise<void> {
+  const pendingLabelId = await getOrCreateLabel(
+    accessToken,
+    `CourseAssistant/${courseId}/Pending`
+  )
+  const answeredLabelId = await getOrCreateLabel(
+    accessToken,
+    `CourseAssistant/${courseId}/Answered`
+  )
+
+  const gmail = getGmailClient(accessToken)
+  await gmail.users.messages.modify({
+    userId: "me",
+    id: messageId,
+    requestBody: {
+      addLabelIds: [answeredLabelId],
+      removeLabelIds: [pendingLabelId],
+    },
+  })
+}
+
+// Mark a question as pending (waiting for professor)
+export async function markQuestionPending(
+  accessToken: string,
+  messageId: string,
+  courseId: string
+): Promise<void> {
+  const pendingLabelId = await getOrCreateLabel(
+    accessToken,
+    `CourseAssistant/${courseId}/Pending`
+  )
+
+  await addLabelToMessage(accessToken, messageId, pendingLabelId)
+}

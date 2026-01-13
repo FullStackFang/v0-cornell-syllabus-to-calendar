@@ -4,88 +4,166 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI-powered web application with a conversational agent that extracts course information from syllabus PDFs, syncs events directly to Google Calendar, and searches Gmail for course-related content. Built for Cornell EMBA students.
+**Course Assistant MCP Server** - A pure MCP (Model Context Protocol) server for managing course Q&A. Professors connect via Claude Desktop, Cursor, or any MCP client to manage student email responses using their own Claude subscription.
+
+The project also includes an optional Next.js web app for individual users.
+
+## Two Modes
+
+### 1. MCP Server (Primary)
+Professors use Claude Desktop to manage courses via natural language:
+- "Set up a course called CS 101"
+- "Check my inbox for student questions"
+- "Approve the response to Alice"
+- "Add FAQ: office hours are Tuesdays 3-5pm"
+
+### 2. Web App (Optional)
+Individual users can use the web interface for personal syllabus/calendar management.
 
 ## Development Commands
 
 ```bash
+# Web App
 npm install           # Install dependencies
 npm run dev           # Start development server (port 3000)
 npm run build         # Production build
-npm run start         # Start production server
-npm run lint          # Run ESLint
+
+# MCP Server
+npm run mcp           # Start MCP server (stdio mode)
+npm run mcp:setup     # Run Google OAuth setup
+npm run mcp:status    # Check authentication status
 ```
 
 ## Environment Variables
 
-Copy `.env.example` to `.env.local` and fill in:
+```bash
+# Required for MCP Server
+GOOGLE_CLIENT_ID=your-client-id
+GOOGLE_CLIENT_SECRET=your-client-secret
 
-```
-ANTHROPIC_API_KEY     # Required for Claude AI
-GOOGLE_CLIENT_ID      # Google OAuth client ID
-GOOGLE_CLIENT_SECRET  # Google OAuth client secret
-NEXTAUTH_SECRET       # Generate with: openssl rand -base64 32
-NEXTAUTH_URL          # http://localhost:3000 for dev
+# Required for Web App (additional)
+ANTHROPIC_API_KEY=your-anthropic-key
+NEXTAUTH_SECRET=generate-with-openssl-rand-base64-32
+NEXTAUTH_URL=http://localhost:3000
 ```
 
 ## Architecture
 
-### AI Agent
+See `docs/ARCHITECTURE.md` for full details.
 
-The app features a conversational AI agent (`/chat`) with four tools:
+### MCP Server Flow
+```
+Professor (Claude Desktop) → MCP Protocol → mcp/server.ts → lib/ functions → Google APIs
+```
 
-1. **parse_syllabus** - Extract structured data from syllabus text
-2. **create_calendar_events** - Create events on Google Calendar
-3. **search_emails** - Search Gmail with query syntax
-4. **summarize_email_thread** - Fetch and summarize email threads
+### Key Directories
 
-### Data Flow
+```
+mcp/                    # MCP Server
+├── server.ts           # Main entry point (stdio transport)
+├── auth/google.ts      # Local OAuth handler
+└── tools/index.ts      # Tool definitions (20+ tools)
 
-1. User signs in via Google OAuth (grants calendar + gmail scopes)
-2. Chat with agent OR upload syllabus via dashboard
-3. Agent parses syllabus, creates calendar events, searches emails
-4. Events sync directly to Google Calendar
+lib/                    # Core functions (shared)
+├── gmail.ts            # Gmail API
+├── google-calendar.ts  # Calendar API
+├── drive.ts            # Drive storage
+├── knowledge-base.ts   # FAQ management
+├── course-config.ts    # Course settings
+└── encryption.ts       # Token encryption
 
-### Key Files
+app/                    # Next.js web app (optional)
+└── api/
+    ├── mcp/http/       # HTTP MCP endpoint
+    └── test/           # Test endpoints
+```
 
-**Authentication:**
-- `lib/auth.ts` - NextAuth configuration with Google OAuth
-- `middleware.ts` - Protects /dashboard, /chat, /review, /success routes
+### MCP Tools Available
 
-**AI Agent:**
-- `lib/agent/tools.ts` - Agent tool definitions and executors
-- `app/api/chat/route.ts` - Streaming chat endpoint with tool calling
+**Course Management:**
+- `setup_course`, `list_courses`, `get_course_info`, `update_settings`
 
-**Google APIs:**
-- `lib/google-calendar.ts` - Calendar event creation helpers
-- `lib/gmail.ts` - Email search and thread retrieval
+**Knowledge Base:**
+- `sync_syllabus`, `add_faq`, `list_faqs`, `update_faq`, `remove_faq`
+- `search_faqs`, `add_key_date`, `add_policy`
 
-**API Routes:**
-- `app/api/upload/route.ts` - PDF upload and text extraction
-- `app/api/calendar/sync/route.ts` - Direct Google Calendar sync
-- `app/api/email/search/route.ts` - Gmail search endpoint
+**Email Processing:**
+- `check_emails`, `get_pending`, `approve_response`, `draft_response`
+- `ignore_question`, `search_emails`, `get_email_thread`, `send_email`
 
-### Page Routes
+**Calendar:**
+- `create_event`, `list_events`
 
-- `/` - Landing page with Google OAuth sign-in
-- `/dashboard` - File upload interface, links to chat
-- `/chat` - Conversational AI agent interface
-- `/review` - Edit extracted course data
-- `/success` - Confirmation after calendar creation
+**Analytics:**
+- `get_stats`
 
-## Tech Stack
+## Data Storage
 
-- **Framework**: Next.js 16 (React 19, App Router)
-- **Auth**: NextAuth.js with Google OAuth
-- **AI**: Vercel AI SDK with Anthropic Claude Sonnet 4
-- **APIs**: Google Calendar API, Gmail API (via googleapis)
-- **Styling**: Tailwind CSS 4, shadcn/ui
-- **Validation**: Zod schemas
+All data stored in professor's Google Drive:
+```
+CourseAssistant/
+└── [course-id]/
+    ├── config.json           # Course settings
+    ├── knowledge-base.json   # FAQs, policies
+    ├── pending-queue.json    # Questions awaiting action
+    └── history.json          # Answered questions
+```
+
+## Testing the MCP Server
+
+1. **Check status:**
+   ```bash
+   npm run mcp:status
+   ```
+
+2. **Set up authentication:**
+   ```bash
+   export GOOGLE_CLIENT_ID="your-id"
+   export GOOGLE_CLIENT_SECRET="your-secret"
+   npm run mcp:setup
+   ```
+
+3. **Configure Claude Desktop** (`~/.config/claude/claude_desktop_config.json`):
+   ```json
+   {
+     "mcpServers": {
+       "course-assistant": {
+         "command": "npx",
+         "args": ["tsx", "/path/to/mcp/server.ts"],
+         "env": {
+           "GOOGLE_CLIENT_ID": "...",
+           "GOOGLE_CLIENT_SECRET": "..."
+         }
+       }
+     }
+   }
+   ```
+
+## Key Files Reference
+
+| File | Purpose |
+|------|---------|
+| `mcp/server.ts` | MCP server entry point |
+| `mcp/auth/google.ts` | Local OAuth flow |
+| `mcp/tools/index.ts` | Tool definitions |
+| `lib/gmail.ts` | Gmail API functions |
+| `lib/drive.ts` | Drive storage |
+| `lib/knowledge-base.ts` | FAQ management |
+| `lib/course-config.ts` | Course settings |
+| `docs/ARCHITECTURE.md` | Full architecture docs |
+| `NEXTSTEPS.md` | Implementation log |
 
 ## Google Cloud Setup
 
 1. Create project at console.cloud.google.com
-2. Enable: Google Calendar API, Gmail API
-3. Create OAuth 2.0 credentials (Web application)
-4. Add authorized redirect URI: `http://localhost:3000/api/auth/callback/google`
-5. Copy Client ID and Secret to `.env.local`
+2. Enable APIs: Gmail, Calendar, Drive
+3. Create OAuth 2.0 credentials (Desktop app for MCP, Web app for Next.js)
+4. Add scopes: gmail.readonly, gmail.send, gmail.modify, calendar, drive.file
+
+## Tech Stack
+
+- **MCP SDK**: @modelcontextprotocol/sdk
+- **Runtime**: Node.js with tsx (TypeScript execution)
+- **Google APIs**: googleapis
+- **Framework**: Next.js 16 (optional web app)
+- **Storage**: Google Drive (no database)

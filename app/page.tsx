@@ -364,7 +364,7 @@ Group results by urgency - what's due today or soon first, then recent items, th
       <main className="flex-1 flex overflow-hidden">
         {/* Left Panel - Chat */}
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-          <ChatInterface ref={chatRef} onEmailSelect={handleEmailSelect} onSyllabusData={handleSyllabusData} />
+          <ChatInterface ref={chatRef} onEmailSelect={handleEmailSelect} onSyllabusData={handleSyllabusData} syllabusData={syllabusData} />
         </div>
 
         {/* Right Panel - Always visible tabbed panel */}
