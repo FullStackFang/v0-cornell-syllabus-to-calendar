@@ -13,7 +13,10 @@
       "Bash(npx tsx:*)",
       "Bash(timeout 10s npx tsx:*)",
       "Bash(find:*)",
-      "Bash(npx shadcn@latest add:*)"
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(grep:*)",
+      "Bash(curl:*)",
+      "Bash(pkill:*)"
     ]
   }
 }
