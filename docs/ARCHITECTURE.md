@@ -1,672 +1,605 @@
-# Course Assistant MCP Server - Architecture
+# CourseFlow AI - Architecture
 
-## Overview
+## System Overview
 
-A **pure MCP (Model Context Protocol) server** that professors connect to via their preferred AI client (Claude Desktop, Cursor, Claude Code CLI). The server provides tools for managing course Q&A, processing student emails, and maintaining a knowledge base - all stored in the professor's Google Drive.
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         SYSTEM OVERVIEW                             │
-│                                                                     │
-│   ┌─────────────────────┐              ┌─────────────────────┐     │
-│   │    MCP Client       │              │    MCP Server       │     │
-│   │                     │    MCP       │    (this project)   │     │
-│   │  ┌───────────────┐  │  Protocol    │                     │     │
-│   │  │ Claude Desktop│  │◄────────────►│  ┌───────────────┐  │     │
-│   │  │ Cursor IDE    │  │   (stdio     │  │    Tools      │  │     │
-│   │  │ Claude Code   │  │    or HTTP)  │  │               │  │     │
-│   │  └───────────────┘  │              │  │ - setup_course│  │     │
-│   │                     │              │  │ - check_emails│  │     │
-│   │  Professor types    │              │  │ - add_faq     │  │     │
-│   │  natural language   │              │  │ - approve_resp│  │     │
-│   │  commands here      │              │  │ - get_stats   │  │     │
-│   │                     │              │  │ - ...         │  │     │
-│   └─────────────────────┘              │  └───────┬───────┘  │     │
-│                                        │          │          │     │
-│                                        └──────────┼──────────┘     │
-│                                                   │                │
-│                         ┌─────────────────────────┼─────────┐      │
-│                         │                         ▼         │      │
-│                         │              ┌─────────────────┐  │      │
-│                         │              │  Google Drive   │  │      │
-│                         │              │                 │  │      │
-│                         │  ┌───────────┴───────────┐     │  │      │
-│                         │  │                       │     │  │      │
-│                         │  ▼                       ▼     │  │      │
-│                         │ Gmail API         Calendar API │  │      │
-│                         │                                │  │      │
-│                         │     Professor's Google Account │  │      │
-│                         └────────────────────────────────┘  │      │
-│                                                             │      │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Why MCP Server?
-
-| Benefit | Description |
-|---------|-------------|
-| **No hosting needed** | Runs locally or professor self-hosts |
-| **Zero app costs** | No Vercel, no database, no infrastructure |
-| **True BYOK** | Professor uses their own Claude subscription via their client |
-| **Familiar interface** | Works with Claude Desktop, Cursor, any MCP client |
-| **Portable** | Same tools work across all MCP-compatible AI clients |
-| **Privacy** | Data stays in professor's own Google Drive |
-
----
-
-## User Roles
-
-### Professor (Primary User)
-
-- Connects MCP server to their AI client
-- Manages course via natural language conversation
-- Reviews and approves student email responses
-- Builds knowledge base from syllabus and interactions
-
-### Student (Indirect User)
-
-- Emails professor as normal
-- Receives AI-assisted responses (may not know it's AI)
-- No login, no app interaction required
-
----
-
-## Data Flow
-
-### Professor Workflow
+CourseFlow AI is a hosted web application that helps professors manage course communications. The system monitors a professor's Gmail inbox, classifies student emails, generates AI-powered draft responses, and maintains a living FAQ.
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                     PROFESSOR WORKFLOW                              │
-│                                                                     │
-│   ┌─────────────────────────────────────────────────────────────┐  │
-│   │                    INITIAL SETUP (One Time)                  │  │
-│   │                                                              │  │
-│   │  1. Professor installs/connects MCP server                  │  │
-│   │  2. Authenticates with Google (grants Gmail, Drive access)  │  │
-│   │  3. Says: "Set up a new course called CS 101"               │  │
-│   │                         │                                    │  │
-│   │                         ▼                                    │  │
-│   │     ┌─────────────────────────────────────────┐             │  │
-│   │     │  MCP Tool: setup_course                 │             │  │
-│   │     │                                          │             │  │
-│   │     │  → Creates CourseAssistant/cs-101/      │             │  │
-│   │     │    folder in professor's Google Drive   │             │  │
-│   │     │  → Initializes config.json              │             │  │
-│   │     │  → Initializes knowledge-base.json      │             │  │
-│   │     │  → Returns confirmation                 │             │  │
-│   │     └─────────────────────────────────────────┘             │  │
-│   │                         │                                    │  │
-│   │                         ▼                                    │  │
-│   │  4. Professor: "Here's my syllabus: [pastes text or file]"  │  │
-│   │                         │                                    │  │
-│   │                         ▼                                    │  │
-│   │     ┌─────────────────────────────────────────┐             │  │
-│   │     │  MCP Tool: sync_syllabus                │             │  │
-│   │     │                                          │             │  │
-│   │     │  → Parses syllabus content              │             │  │
-│   │     │  → Extracts key dates, policies, FAQs   │             │  │
-│   │     │  → Updates knowledge-base.json          │             │  │
-│   │     │  → Returns: "Found 12 dates, 5 policies"│             │  │
-│   │     └─────────────────────────────────────────┘             │  │
-│   │                                                              │  │
-│   │  Setup complete! Professor can now manage course.           │  │
-│   └─────────────────────────────────────────────────────────────┘  │
-│                                                                     │
-│   ┌─────────────────────────────────────────────────────────────┐  │
-│   │                   ONGOING MANAGEMENT                         │  │
-│   │                                                              │  │
-│   │  Professor: "Check my inbox for student questions"          │  │
-│   │                         │                                    │  │
-│   │                         ▼                                    │  │
-│   │     ┌─────────────────────────────────────────┐             │  │
-│   │     │  MCP Tool: check_emails                 │             │  │
-│   │     │                                          │             │  │
-│   │     │  → Searches Gmail for unprocessed emails│             │  │
-│   │     │  → Analyzes each against knowledge base │             │  │
-│   │     │  → Calculates confidence scores         │             │  │
-│   │     │  → Returns summary:                     │             │  │
-│   │     │    "3 new questions:                    │             │  │
-│   │     │     1. Alice: midterm (95% - auto-reply)│             │  │
-│   │     │     2. Bob: extension (40% - needs you) │             │  │
-│   │     │     3. Carol: grade (20% - needs you)"  │             │  │
-│   │     └─────────────────────────────────────────┘             │  │
-│   │                         │                                    │  │
-│   │                         ▼                                    │  │
-│   │  Professor: "Auto-reply to Alice, tell Bob yes until Friday"│  │
-│   │                         │                                    │  │
-│   │              ┌──────────┴──────────┐                        │  │
-│   │              ▼                     ▼                         │  │
-│   │  ┌─────────────────┐    ┌─────────────────┐                 │  │
-│   │  │ approve_response│    │ draft_response  │                 │  │
-│   │  │                 │    │                 │                 │  │
-│   │  │ → Sends email   │    │ → Creates draft │                 │  │
-│   │  │   to Alice      │    │   for Bob       │                 │  │
-│   │  │ → Logs to       │    │ → Professor can │                 │  │
-│   │  │   history       │    │   review/send   │                 │  │
-│   │  └─────────────────┘    └─────────────────┘                 │  │
-│   │                         │                                    │  │
-│   │                         ▼                                    │  │
-│   │  Professor: "Add FAQ: extension requests need 48hr notice"  │  │
-│   │                         │                                    │  │
-│   │                         ▼                                    │  │
-│   │     ┌─────────────────────────────────────────┐             │  │
-│   │     │  MCP Tool: add_faq                      │             │  │
-│   │     │                                          │             │  │
-│   │     │  → Adds Q&A to knowledge-base.json      │             │  │
-│   │     │  → Future questions will match this     │             │  │
-│   │     │  → Returns confirmation                 │             │  │
-│   │     └─────────────────────────────────────────┘             │  │
-│   │                                                              │  │
-│   └─────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-### Student Workflow (Email-Based)
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                      STUDENT WORKFLOW                               │
-│                                                                     │
-│   Student has a question                                            │
-│           │                                                         │
-│           ▼                                                         │
-│   ┌───────────────────────────────────┐                            │
-│   │  Student sends email to professor │                            │
-│   │  "When is the midterm exam?"      │                            │
-│   │  → professor@university.edu       │                            │
-│   └───────────────────────────────────┘                            │
-│           │                                                         │
-│           │  Email sits in professor's inbox                       │
-│           │                                                         │
-│           ▼                                                         │
-│   ┌───────────────────────────────────┐                            │
-│   │  Professor (at their convenience) │                            │
-│   │  "Check for new student questions"│                            │
-│   └───────────────────────────────────┘                            │
-│           │                                                         │
-│           ▼                                                         │
-│   ┌───────────────────────────────────┐                            │
-│   │  MCP Server processes email:      │                            │
-│   │  - Matches against knowledge base │                            │
-│   │  - Generates suggested response   │                            │
-│   │  - Calculates confidence          │                            │
-│   └───────────────────────────────────┘                            │
-│           │                                                         │
-│           ├──── HIGH confidence (≥85%) ────┐                       │
-│           │                                 ▼                       │
-│           │                    ┌───────────────────────┐           │
-│           │                    │ Professor: "Approve"  │           │
-│           │                    │ → Email sent to student│          │
-│           │                    └───────────────────────┘           │
-│           │                                                         │
-│           └──── LOW confidence (<85%) ─────┐                       │
-│                                             ▼                       │
-│                                ┌───────────────────────┐           │
-│                                │ Professor reviews,    │           │
-│                                │ edits, then approves  │           │
-│                                │ → Custom email sent   │           │
-│                                └───────────────────────┘           │
-│                                             │                       │
-│                                             ▼                       │
-│                                ┌───────────────────────┐           │
-│                                │  Student receives     │           │
-│                                │  response in inbox    │           │
-│                                └───────────────────────┘           │
-│                                                                     │
-│   Note: Student never interacts with the app directly.             │
-│   They just email and receive replies as normal.                   │
-└─────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           SYSTEM ARCHITECTURE                                │
+│                                                                              │
+│  ┌──────────────┐     ┌──────────────┐     ┌──────────────────────────────┐ │
+│  │   Student    │     │  Professor   │     │        CourseFlow AI         │ │
+│  │              │     │              │     │                              │ │
+│  │  Sends email │     │  Dashboard   │     │  ┌────────────────────────┐  │ │
+│  │  to prof+cs  │     │  - Review    │     │  │     Next.js App        │  │ │
+│  │  @uni.edu    │     │  - Approve   │     │  │                        │  │ │
+│  │              │     │  - FAQ mgmt  │     │  │  /dashboard            │  │ │
+│  │  Browses FAQ │     │              │     │  │  /api/*                │  │ │
+│  │  Uses chatbot│     │              │     │  │  /faq (student)        │  │ │
+│  └──────┬───────┘     └──────┬───────┘     │  └───────────┬────────────┘  │ │
+│         │                    │             │              │               │ │
+│         │                    │             │              ▼               │ │
+│         │                    │             │  ┌────────────────────────┐  │ │
+│         │                    └─────────────┼──►     PostgreSQL        │  │ │
+│         │                                  │  │     + pgvector        │  │ │
+│         │                                  │  │                        │  │ │
+│         │                                  │  │  users, courses,       │  │ │
+│         │                                  │  │  emails, faq_entries,  │  │ │
+│         │                                  │  │  integrations, etc.    │  │ │
+│         │                                  │  └────────────────────────┘  │ │
+│         │                                  │              │               │ │
+│         │                                  │              ▼               │ │
+│         │                                  │  ┌────────────────────────┐  │ │
+│         │                                  │  │   BullMQ Workers       │  │ │
+│         │                                  │  │                        │  │ │
+│         │                                  │  │  - email-processor     │  │ │
+│         │                                  │  │  - faq-generator       │  │ │
+│         │                                  │  │  - gmail-watcher       │  │ │
+│         │                                  │  └───────────┬────────────┘  │ │
+│         │                                  │              │               │ │
+│         │                                  └──────────────┼───────────────┘ │
+│         │                                                 │                 │
+│         │         ┌───────────────────────────────────────┘                 │
+│         │         │                                                         │
+│         │         ▼                                                         │
+│  ┌──────┴─────────────────────────────────────────────────────────────────┐ │
+│  │                         External Services                               │ │
+│  │                                                                         │ │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐   │ │
+│  │  │   Gmail     │  │  Anthropic  │  │   OpenAI    │  │   Resend    │   │ │
+│  │  │   API       │  │  Claude API │  │ Embeddings  │  │  (email)    │   │ │
+│  │  │             │  │             │  │             │  │             │   │ │
+│  │  │ Read/Send   │  │ Classify    │  │ Semantic    │  │ Magic links │   │ │
+│  │  │ Pub/Sub     │  │ Generate    │  │ search      │  │ Invites     │   │ │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘   │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## MCP Tools Reference
+## Authentication Architecture
 
-### Course Management
+### Design Principle: Decoupled Auth
 
-| Tool | Description | Example Prompt |
-|------|-------------|----------------|
-| `setup_course` | Create new course in Drive | "Set up a course called CS 101" |
-| `list_courses` | Show all courses | "What courses do I have?" |
-| `get_course_info` | Get course details | "Show me CS 101 settings" |
-| `update_course_settings` | Modify settings | "Set auto-reply threshold to 90%" |
-| `delete_course` | Remove a course | "Delete the test course" |
-
-### Knowledge Base
-
-| Tool | Description | Example Prompt |
-|------|-------------|----------------|
-| `sync_syllabus` | Parse syllabus, extract info | "Here's my syllabus: [content]" |
-| `add_faq` | Add Q&A pair | "Add FAQ: office hours are Tues 3-5" |
-| `list_faqs` | View all FAQs | "Show me all FAQs" |
-| `update_faq` | Modify existing FAQ | "Change the midterm date to March 20" |
-| `remove_faq` | Delete an FAQ | "Remove the FAQ about parking" |
-| `search_faqs` | Find matching FAQs | "Do I have an FAQ about extensions?" |
-| `add_key_date` | Add important date | "Add key date: Final exam May 15" |
-| `add_policy` | Add course policy | "Add policy: No laptops during exams" |
-
-### Email Processing
-
-| Tool | Description | Example Prompt |
-|------|-------------|----------------|
-| `check_emails` | Poll for new student questions | "Check my inbox for questions" |
-| `get_pending` | View questions awaiting action | "Show pending questions" |
-| `get_question_details` | See full email content | "What exactly did Alice ask?" |
-| `approve_response` | Send AI-suggested response | "Approve response to Alice" |
-| `draft_response` | Create custom draft | "Tell Bob the deadline is Friday" |
-| `send_response` | Send custom response directly | "Reply to Carol: Yes, approved" |
-| `ignore_question` | Mark as handled (no response) | "Ignore the spam message" |
-| `search_emails` | General Gmail search | "Find emails about grade disputes" |
-
-### Calendar
-
-| Tool | Description | Example Prompt |
-|------|-------------|----------------|
-| `create_event` | Create calendar event | "Add office hours Tuesday 3-5pm" |
-| `list_events` | View upcoming events | "What's on my calendar this week?" |
-| `update_event` | Modify an event | "Move office hours to Thursday" |
-
-### Analytics
-
-| Tool | Description | Example Prompt |
-|------|-------------|----------------|
-| `get_stats` | Course statistics | "How many questions this week?" |
-| `get_response_history` | View past responses | "Show last 10 answered questions" |
-| `get_common_questions` | Most frequent topics | "What do students ask about most?" |
-
----
-
-## Data Storage (Google Drive)
-
-All data persists in the professor's own Google Drive:
+Login and Gmail access are completely separate concerns:
 
 ```
-Professor's Google Drive
-│
-└── CourseAssistant/                    ← App folder
-    │
-    ├── cs-101/                         ← Course folder
-    │   │
-    │   ├── config.json                 ← Course settings
-    │   │   {
-    │   │     "courseId": "cs-101",
-    │   │     "courseName": "Intro to Computer Science",
-    │   │     "professorEmail": "prof@university.edu",
-    │   │     "settings": {
-    │   │       "autoReplyThreshold": 0.85,
-    │   │       "emailFilter": "subject:CS101 OR from:*@university.edu"
-    │   │     },
-    │   │     "createdAt": "2025-01-12T..."
-    │   │   }
-    │   │
-    │   ├── knowledge-base.json         ← FAQs, policies, dates
-    │   │   {
-    │   │     "courseId": "cs-101",
-    │   │     "syllabusSummary": "Intro course covering...",
-    │   │     "keyDates": [
-    │   │       { "date": "2025-03-15", "description": "Midterm" },
-    │   │       { "date": "2025-05-10", "description": "Final" }
-    │   │     ],
-    │   │     "policies": [
-    │   │       "Late homework: -10% per day, max 3 days",
-    │   │       "No laptops during exams"
-    │   │     ],
-    │   │     "faqs": [
-    │   │       {
-    │   │         "id": "uuid-1",
-    │   │         "question": "When is the midterm?",
-    │   │         "answer": "March 15th at 2pm in Room 301",
-    │   │         "source": "syllabus",
-    │   │         "created": "2025-01-12T..."
-    │   │       }
-    │   │     ]
-    │   │   }
-    │   │
-    │   ├── pending-queue.json          ← Questions awaiting action
-    │   │   {
-    │   │     "questions": [
-    │   │       {
-    │   │         "id": "q-123",
-    │   │         "emailId": "gmail-msg-id",
-    │   │         "from": "student@university.edu",
-    │   │         "subject": "Extension request",
-    │   │         "body": "Can I get an extension on HW3?",
-    │   │         "receivedAt": "2025-01-12T...",
-    │   │         "suggestedResponse": "I can grant...",
-    │   │         "confidence": 0.45,
-    │   │         "matchedFaqs": ["uuid-2"]
-    │   │       }
-    │   │     ]
-    │   │   }
-    │   │
-    │   └── history.json                ← Answered questions log
-    │       {
-    │         "questions": [
-    │           {
-    │             "id": "q-100",
-    │             "from": "alice@university.edu",
-    │             "question": "When is the midterm?",
-    │             "response": "March 15th at 2pm...",
-    │             "answeredAt": "2025-01-11T...",
-    │             "wasAutoApproved": true,
-    │             "confidence": 0.95
-    │           }
-    │         ]
-    │       }
-    │
-    └── data-science-200/               ← Another course
-        ├── config.json
-        ├── knowledge-base.json
-        ├── pending-queue.json
-        └── history.json
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        AUTHENTICATION MODEL                                  │
+│                                                                              │
+│   TRADITIONAL APPROACH (rejected):                                           │
+│   ┌─────────┐    ┌─────────────────┐    ┌─────────────────┐                │
+│   │ User    │───►│ Google OAuth    │───►│ App + Gmail     │                │
+│   │ arrives │    │ consent screen  │    │ access granted  │                │
+│   └─────────┘    │ (scary, 2FA)    │    └─────────────────┘                │
+│                  └─────────────────┘                                        │
+│   Problem: High friction on first visit, many users bounce                  │
+│                                                                              │
+│   ─────────────────────────────────────────────────────────────────────────│
+│                                                                              │
+│   COURSEFLOW APPROACH (implemented):                                         │
+│                                                                              │
+│   Step 1: Frictionless Login                                                │
+│   ┌─────────┐    ┌─────────────────┐    ┌─────────────────┐                │
+│   │ User    │───►│ Enter email     │───►│ Click magic     │───► Logged in │
+│   │ arrives │    │ (one field)     │    │ link in inbox   │                │
+│   └─────────┘    └─────────────────┘    └─────────────────┘                │
+│                                                                              │
+│   Step 2: Gmail Connector (Optional, Later)                                 │
+│   ┌─────────┐    ┌─────────────────┐    ┌─────────────────┐                │
+│   │ Settings│───►│ Click "Connect  │───►│ Google OAuth    │───► Connected │
+│   │ page    │    │ Gmail"          │    │ (Gmail only)    │                │
+│   └─────────┘    └─────────────────┘    └─────────────────┘                │
+│                                                                              │
+│   Benefits:                                                                  │
+│   - Zero friction on first visit (just enter email)                         │
+│   - Professor gets immediate value (courses, FAQ, materials)                │
+│   - Gmail OAuth only when professor is ready and understands why            │
+│   - Students never need Google OAuth at all                                 │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
----
-
-## MCP Server Transports
-
-The server supports two transport modes:
-
-### 1. stdio (Local - Recommended)
-
-For Claude Desktop, local development:
+### Magic Link Flow
 
 ```
-┌──────────────┐     stdin/stdout     ┌──────────────┐
-│Claude Desktop│◄────────────────────►│  MCP Server  │
-│  (or Cursor) │                      │   (local)    │
-└──────────────┘                      └──────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         MAGIC LINK AUTHENTICATION                            │
+│                                                                              │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                      LOGIN FLOW                                      │   │
+│   │                                                                      │   │
+│   │   User                    CourseFlow                    Email        │   │
+│   │    │                          │                           │          │   │
+│   │    │  POST /api/auth/magic-link                          │          │   │
+│   │    │  { email: "prof@uni.edu" }                          │          │   │
+│   │    │─────────────────────────►│                           │          │   │
+│   │    │                          │                           │          │   │
+│   │    │                          │  Generate random token    │          │   │
+│   │    │                          │  Hash token, store in DB  │          │   │
+│   │    │                          │  (15 min expiry)          │          │   │
+│   │    │                          │                           │          │   │
+│   │    │                          │  Send email via Resend    │          │   │
+│   │    │                          │──────────────────────────►│          │   │
+│   │    │                          │                           │          │   │
+│   │    │  200 OK                  │                           │          │   │
+│   │    │  "Check your email"      │                           │          │   │
+│   │    │◄─────────────────────────│                           │          │   │
+│   │    │                          │                           │          │   │
+│   │    │                          │          Email arrives    │          │   │
+│   │    │◄─────────────────────────────────────────────────────│          │   │
+│   │    │  "Click to sign in"      │                           │          │   │
+│   │    │                          │                           │          │   │
+│   │    │  GET /api/auth/verify?token=abc123                   │          │   │
+│   │    │─────────────────────────►│                           │          │   │
+│   │    │                          │                           │          │   │
+│   │    │                          │  Verify token hash        │          │   │
+│   │    │                          │  Check not expired        │          │   │
+│   │    │                          │  Mark token as used       │          │   │
+│   │    │                          │  Upsert user record       │          │   │
+│   │    │                          │  Issue JWT cookie         │          │   │
+│   │    │                          │                           │          │   │
+│   │    │  302 Redirect /dashboard │                           │          │   │
+│   │    │  Set-Cookie: session=JWT │                           │          │   │
+│   │    │◄─────────────────────────│                           │          │   │
+│   │    │                          │                           │          │   │
+│   └────┴──────────────────────────┴───────────────────────────┴──────────┘   │
+│                                                                              │
+│   Security:                                                                  │
+│   - Tokens are cryptographically random (32 bytes)                          │
+│   - Only hash stored in DB (token never stored plaintext)                   │
+│   - Single-use (marked used_at after verification)                          │
+│   - Short-lived (15 minutes)                                                │
+│   - Rate limited (5 requests/email/hour)                                    │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Setup in Claude Desktop:**
-```json
-{
-  "mcpServers": {
-    "course-assistant": {
-      "command": "node",
-      "args": ["/path/to/course-assistant/dist/mcp-server.js"],
-      "env": {
-        "GOOGLE_CLIENT_ID": "...",
-        "GOOGLE_CLIENT_SECRET": "..."
-      }
-    }
-  }
-}
-```
-
-### 2. HTTP (Remote)
-
-For hosted deployments, remote access:
+### Student Authentication
 
 ```
-┌──────────────┐       HTTPS        ┌──────────────┐
-│  MCP Client  │◄──────────────────►│  MCP Server  │
-│  (anywhere)  │                    │  (hosted)    │
-└──────────────┘                    └──────────────┘
-```
-
-**Endpoint:** `POST /api/mcp/http`
-
----
-
-## Authentication
-
-### Google OAuth Flow
-
-Since there's no web UI, authentication works via:
-
-1. **First run**: Server opens browser for Google OAuth
-2. **Token storage**: Refresh token saved locally (encrypted)
-3. **Subsequent runs**: Uses stored refresh token
-4. **Token refresh**: Automatic when access token expires
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    AUTHENTICATION FLOW                              │
-│                                                                     │
-│   First Time:                                                       │
-│   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐        │
-│   │ MCP Server   │───►│ Opens browser│───►│ Google OAuth │        │
-│   │ starts       │    │ localhost:X  │    │ consent      │        │
-│   └──────────────┘    └──────────────┘    └──────┬───────┘        │
-│                                                   │                 │
-│                                                   ▼                 │
-│                       ┌──────────────────────────────────┐         │
-│                       │ User grants: Gmail, Calendar,    │         │
-│                       │ Drive access                     │         │
-│                       └──────────────────────────────────┘         │
-│                                                   │                 │
-│                                                   ▼                 │
-│   ┌──────────────────────────────────────────────────────┐         │
-│   │ Refresh token stored locally (encrypted)             │         │
-│   │ ~/.course-assistant/credentials.json                 │         │
-│   └──────────────────────────────────────────────────────┘         │
-│                                                                     │
-│   Subsequent Runs:                                                  │
-│   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐        │
-│   │ MCP Server   │───►│ Load stored  │───►│ Use/refresh  │        │
-│   │ starts       │    │ credentials  │    │ access token │        │
-│   └──────────────┘    └──────────────┘    └──────────────┘        │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-### Required Google Scopes
-
-```
-https://www.googleapis.com/auth/gmail.readonly    ← Read emails
-https://www.googleapis.com/auth/gmail.send        ← Send responses
-https://www.googleapis.com/auth/gmail.modify      ← Mark as read
-https://www.googleapis.com/auth/calendar          ← Calendar access
-https://www.googleapis.com/auth/drive.file        ← Drive storage
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      STUDENT AUTHENTICATION                                  │
+│                                                                              │
+│   PATH 1: Invite Link (First Visit)                                         │
+│   ─────────────────────────────────                                         │
+│                                                                              │
+│   Professor uploads roster → CourseFlow generates signed invite URLs        │
+│                                                                              │
+│   URL: https://courseflow.ai/invite/cs101?token={JWT}                       │
+│                                                                              │
+│   JWT payload: { email: "student@uni.edu", course_id: "cs101", exp: 7d }    │
+│                                                                              │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │  Student clicks invite link                                          │   │
+│   │       │                                                              │   │
+│   │       ▼                                                              │   │
+│   │  Verify JWT signature                                                │   │
+│   │       │                                                              │   │
+│   │       ▼                                                              │   │
+│   │  Upsert user (role: student)                                        │   │
+│   │       │                                                              │   │
+│   │       ▼                                                              │   │
+│   │  Verify enrollment in course                                         │   │
+│   │       │                                                              │   │
+│   │       ▼                                                              │   │
+│   │  Issue session JWT cookie                                            │   │
+│   │       │                                                              │   │
+│   │       ▼                                                              │   │
+│   │  Redirect to /courses/cs101/faq                                      │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│   PATH 2: Magic Link (Return Visits)                                        │
+│   ──────────────────────────────────                                        │
+│                                                                              │
+│   Same as professor flow. Student enters email → magic link → signed in.    │
+│   App shows all courses the student is enrolled in.                         │
+│                                                                              │
+│   KEY: No Google OAuth required for students, ever.                         │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Cost Structure
+## Integrations / Connectors
 
-| Who | Pays For | Amount |
-|-----|----------|--------|
-| **Professor** | Claude AI usage | Their Claude subscription (via Claude Desktop, etc.) |
-| **Professor** | Google APIs | Free (within quotas) |
-| **App Developer** | Nothing | Just code distribution |
-| **Students** | Nothing | Just email normally |
+### Design Principle: Toggleable Connectors
 
-**This is true zero-cost hosting** - the MCP server runs locally on the professor's machine using their own Claude subscription.
-
----
-
-## Configuration
-
-### Environment Variables
-
-```bash
-# Required: Google OAuth
-GOOGLE_CLIENT_ID=your-client-id
-GOOGLE_CLIENT_SECRET=your-client-secret
-
-# Optional: Custom storage location
-COURSE_ASSISTANT_DATA_DIR=~/.course-assistant
-
-# Optional: Default settings
-DEFAULT_AUTO_REPLY_THRESHOLD=0.85
-DEFAULT_EMAIL_FILTER="is:unread"
-```
-
-### Course Settings
-
-Each course can customize:
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `autoReplyThreshold` | 0.85 | Confidence needed for auto-approve |
-| `emailFilter` | `is:unread` | Gmail search filter for questions |
-| `maxPendingDays` | 7 | Auto-archive old pending questions |
-| `notifyOnLowConfidence` | false | Alert for uncertain responses |
-
----
-
-## Example Conversation
+Gmail (and future integrations) are optional capabilities, not requirements:
 
 ```
-Professor: Set up a new course for my Data Science class
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        INTEGRATIONS ARCHITECTURE                             │
+│                                                                              │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                    Settings → Integrations Page                      │   │
+│   │                                                                      │   │
+│   │   ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐    │   │
+│   │   │     Gmail       │  │ Google Calendar │  │    Canvas LMS   │    │   │
+│   │   │                 │  │                 │  │                 │    │   │
+│   │   │  [● Connected]  │  │  [○ Not connected]│ │  [○ Coming soon]│   │   │
+│   │   │                 │  │                 │  │                 │    │   │
+│   │   │  Toggle: [ON]   │  │  [Connect]      │  │  [Coming soon]  │    │   │
+│   │   │  [Disconnect]   │  │                 │  │                 │    │   │
+│   │   └─────────────────┘  └─────────────────┘  └─────────────────┘    │   │
+│   │                                                                      │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│   Database: integrations table                                               │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │  id | user_id | provider | status       | tokens (encrypted) | meta │   │
+│   │  ───┼─────────┼──────────┼──────────────┼────────────────────┼──────│   │
+│   │  1  │ u_123   │ gmail    │ connected    │ {access, refresh}  │ {...}│   │
+│   │  2  │ u_456   │ gmail    │ paused       │ {access, refresh}  │ {...}│   │
+│   │  3  │ u_789   │ gmail    │ disconnected │ NULL               │ NULL │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│   Status transitions:                                                        │
+│   - not connected → connected (OAuth flow completed)                        │
+│   - connected ↔ paused (toggle monitoring on/off, tokens preserved)         │
+│   - connected/paused → disconnected (tokens revoked and deleted)            │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
 
-MCP Server: [calls setup_course tool]
-→ Created course "data-science" in your Google Drive.
-  Folder: CourseAssistant/data-science/
-  Ready for syllabus upload.
+### Gmail Connector Flow
 
-Professor: Here's my syllabus for the course:
-[pastes syllabus text or attaches PDF]
-
-MCP Server: [calls sync_syllabus tool]
-→ Parsed your syllabus. Found:
-  - 8 key dates (midterm, final, project deadlines)
-  - 4 policies (late work, attendance, academic integrity, grading)
-  - Course description added to knowledge base
-
-  Would you like me to show what I extracted?
-
-Professor: Yes, show the key dates
-
-MCP Server: [calls get_course_info tool]
-→ Key dates for Data Science:
-  1. Feb 15 - Problem Set 1 due
-  2. Mar 1 - Problem Set 2 due
-  3. Mar 15 - Midterm Exam
-  4. Apr 1 - Project Proposal due
-  5. Apr 15 - Problem Set 3 due
-  6. May 1 - Final Project due
-  7. May 10 - Final Exam
-  8. May 15 - Grades posted
-
-Professor: Add an FAQ that office hours are Wednesdays 2-4pm in Room 301
-
-MCP Server: [calls add_faq tool]
-→ Added FAQ:
-  Q: When are office hours?
-  A: Office hours are Wednesdays 2-4pm in Room 301.
-
-Professor: Check my inbox for student questions about the course
-
-MCP Server: [calls check_emails tool]
-→ Found 4 new course-related emails:
-
-  1. alice@university.edu - "Midterm date?"
-     Confidence: 95% ✓
-     Suggested: "The midterm is March 15th..."
-
-  2. bob@university.edu - "Extension for PS2?"
-     Confidence: 35% ⚠
-     Suggested: "I'd need to know more about..."
-
-  3. carol@university.edu - "Office hours this week?"
-     Confidence: 92% ✓
-     Suggested: "Office hours are Wednesdays 2-4pm..."
-
-  4. dave@university.edu - "Grade dispute"
-     Confidence: 15% ⚠
-     Suggested: "I'll need to review your specific situation..."
-
-Professor: Approve responses to Alice and Carol. For Bob, tell him yes
-he can have until Friday. Ignore Dave for now, I'll handle that myself.
-
-MCP Server: [calls approve_response x2, draft_response, ignore_question]
-→ Done!
-  ✓ Sent response to Alice about midterm date
-  ✓ Sent response to Carol about office hours
-  ✓ Created draft for Bob (extension until Friday) - review in Gmail
-  ✓ Marked Dave's email as handled (no auto-response)
-
-Professor: How many questions have I handled this week?
-
-MCP Server: [calls get_stats tool]
-→ This week's stats for Data Science:
-  - 12 questions received
-  - 8 auto-approved (high confidence)
-  - 3 manually approved
-  - 1 ignored
-  - Average response time: 2.3 hours
-  - Most common topic: Assignment deadlines (5 questions)
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         GMAIL CONNECTOR FLOW                                 │
+│                                                                              │
+│   CONNECT:                                                                   │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                                                                      │   │
+│   │  Professor clicks "Connect Gmail"                                    │   │
+│   │       │                                                              │   │
+│   │       ▼                                                              │   │
+│   │  POST /api/integrations/gmail/connect                                │   │
+│   │       │                                                              │   │
+│   │       ▼                                                              │   │
+│   │  Redirect to Google OAuth                                            │   │
+│   │  (login_hint = professor's email from magic link signup)             │   │
+│   │  Scopes: gmail.readonly, gmail.compose, gmail.send, gmail.modify     │   │
+│   │       │                                                              │   │
+│   │       ▼                                                              │   │
+│   │  Google consent screen                                               │   │
+│   │       │                                                              │   │
+│   │       ▼                                                              │   │
+│   │  GET /api/integrations/gmail/callback?code=...                       │   │
+│   │       │                                                              │   │
+│   │       ▼                                                              │   │
+│   │  Exchange code for tokens                                            │   │
+│   │  Verify Gmail address matches CourseFlow email                       │   │
+│   │  Encrypt and store tokens                                            │   │
+│   │  Call gmail.users.watch() to start Pub/Sub                           │   │
+│   │  Store history_id and watch_expiry in metadata                       │   │
+│   │       │                                                              │   │
+│   │       ▼                                                              │   │
+│   │  Redirect to /settings/integrations with success toast               │   │
+│   │                                                                      │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│   TOGGLE ON/OFF:                                                            │
+│   - Toggle ON: call gmail.users.watch(), set watch_active = true            │
+│   - Toggle OFF: let watch expire, set watch_active = false                  │
+│   - Tokens preserved in both states (no re-auth needed)                     │
+│                                                                              │
+│   DISCONNECT:                                                                │
+│   - Revoke tokens via Google API                                            │
+│   - Delete tokens from database                                             │
+│   - Set status = disconnected                                               │
+│   - Course features remain (FAQ, materials), email features dormant         │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Files Reference
+## Email Processing Pipeline
 
-### Core Library Functions
-
-| File | Purpose |
-|------|---------|
-| `lib/gmail.ts` | Gmail API: search, send, draft, thread |
-| `lib/google-calendar.ts` | Calendar API: create, list, update events |
-| `lib/drive.ts` | Drive API: read/write JSON, manage folders |
-| `lib/knowledge-base.ts` | Knowledge base CRUD operations |
-| `lib/course-config.ts` | Course settings management |
-| `lib/agent-decision.ts` | Confidence scoring for responses |
-
-### MCP Server
-
-| File | Purpose |
-|------|---------|
-| `mcp/server.ts` | MCP server entry point |
-| `mcp/tools/course.ts` | Course management tools |
-| `mcp/tools/knowledge-base.ts` | KB management tools |
-| `mcp/tools/email.ts` | Email processing tools |
-| `mcp/tools/calendar.ts` | Calendar tools |
-| `mcp/auth/google.ts` | Google OAuth for MCP context |
-
-### Configuration
-
-| File | Purpose |
-|------|---------|
-| `.env` | Environment variables |
-| `~/.course-assistant/credentials.json` | Stored OAuth tokens |
-| `~/.course-assistant/config.json` | Local MCP server config |
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       EMAIL PROCESSING PIPELINE                              │
+│                                                                              │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                                                                      │   │
+│   │  Student sends email to prof+cs101@uni.edu                          │   │
+│   │       │                                                              │   │
+│   │       ▼                                                              │   │
+│   │  Gmail delivers to professor's inbox                                 │   │
+│   │       │                                                              │   │
+│   │       ▼                                                              │   │
+│   │  Gmail Pub/Sub → POST /api/gmail/webhook                             │   │
+│   │  { emailAddress, historyId }                                         │   │
+│   │       │                                                              │   │
+│   │       ▼                                                              │   │
+│   │  Webhook handler:                                                    │   │
+│   │  - Look up user by email                                             │   │
+│   │  - Check integration status = connected AND watch_active = true      │   │
+│   │  - If paused/disconnected: return 200, skip processing               │   │
+│   │  - Otherwise: return 200, enqueue BullMQ job                         │   │
+│   │       │                                                              │   │
+│   │       ▼                                                              │   │
+│   │  ┌───────────────────────────────────────────────────────────────┐  │   │
+│   │  │  BullMQ Worker: email-processor                               │  │   │
+│   │  │                                                                │  │   │
+│   │  │  1. Get OAuth tokens from integrations table                  │  │   │
+│   │  │     (auto-refresh if expired)                                  │  │   │
+│   │  │                                                                │  │   │
+│   │  │  2. Fetch new messages via gmail.users.history.list()          │  │   │
+│   │  │                                                                │  │   │
+│   │  │  3. For each message:                                          │  │   │
+│   │  │     - Parse headers (To, Cc, From, Subject)                    │  │   │
+│   │  │     - Detect plus-address → match to course                   │  │   │
+│   │  │     - Match sender to student roster                           │  │   │
+│   │  │                                                                │  │   │
+│   │  │  4. Classify with Claude:                                      │  │   │
+│   │  │     → Category: policy, content, logistics, personal, etc.    │  │   │
+│   │  │     → Confidence: 0-1                                          │  │   │
+│   │  │     → Priority: critical, high, normal, low                    │  │   │
+│   │  │                                                                │  │   │
+│   │  │  5. Generate embedding (OpenAI text-embedding-3-small)         │  │   │
+│   │  │                                                                │  │   │
+│   │  │  6. Search FAQ + materials for context (cosine similarity)     │  │   │
+│   │  │                                                                │  │   │
+│   │  │  7. Generate draft response with Claude                        │  │   │
+│   │  │     (grounded in FAQ + materials)                              │  │   │
+│   │  │                                                                │  │   │
+│   │  │  8. Route:                                                     │  │   │
+│   │  │     IF personal/complaint → always queue for professor        │  │   │
+│   │  │     ELIF auto_reply_enabled AND confidence >= threshold       │  │   │
+│   │  │       → send auto-reply immediately                           │  │   │
+│   │  │     ELSE                                                       │  │   │
+│   │  │       → store draft, queue for professor review               │  │   │
+│   │  │                                                                │  │   │
+│   │  │  9. Update history_id for next poll                            │  │   │
+│   │  │                                                                │  │   │
+│   │  └───────────────────────────────────────────────────────────────┘  │   │
+│   │                                                                      │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## Implementation Status
+## Database Schema
 
-| Phase | Status | Description |
-|-------|--------|-------------|
-| 1 | ✅ Done | Core lib functions (Gmail, Calendar, Drive) |
-| 2 | ✅ Done | Knowledge base, agent decision engine |
-| 3 | ✅ Done | Google Drive storage integration |
-| 4 | 🔲 Next | **MCP Server Refactor** - Convert to pure MCP |
-| 5 | 🔲 | Course management tools |
-| 6 | 🔲 | Email processing tools (check_emails, approve) |
-| 7 | 🔲 | stdio transport for Claude Desktop |
-| 8 | 🔲 | Local OAuth flow (browser popup) |
-| 9 | 🔲 | Documentation & distribution |
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          DATABASE SCHEMA                                     │
+│                                                                              │
+│   ┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐  │
+│   │     users       │       │   magic_links   │       │  integrations   │  │
+│   │─────────────────│       │─────────────────│       │─────────────────│  │
+│   │ id (PK)         │◄──────│ user_id (FK)    │       │ id (PK)         │  │
+│   │ email (unique)  │       │ token_hash      │       │ user_id (FK) ───┼──┤
+│   │ name            │       │ expires_at      │       │ provider        │  │
+│   │ email_verified  │       │ used_at         │       │ status          │  │
+│   │ role            │       └─────────────────┘       │ access_token    │  │
+│   │ created_at      │                                 │ refresh_token   │  │
+│   │ last_login_at   │                                 │ token_expiry    │  │
+│   └────────┬────────┘                                 │ provider_meta   │  │
+│            │                                          │ connected_at    │  │
+│            │                                          └─────────────────┘  │
+│            │                                                               │
+│            ▼                                                               │
+│   ┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐  │
+│   │    courses      │       │course_materials │       │ material_chunks │  │
+│   │─────────────────│       │─────────────────│       │─────────────────│  │
+│   │ id (PK)         │◄──────│ course_id (FK)  │◄──────│ material_id (FK)│  │
+│   │ professor_id(FK)│       │ filename        │       │ content         │  │
+│   │ name            │       │ file_path       │       │ embedding       │  │
+│   │ course_code     │       │ extracted_text  │       │ chunk_index     │  │
+│   │ plus_address    │       │ created_at      │       └─────────────────┘  │
+│   │ auto_reply      │       └─────────────────┘                            │
+│   │ threshold       │                                                      │
+│   │ disclaimer      │       ┌─────────────────┐       ┌─────────────────┐  │
+│   │ settings (JSON) │       │    students     │       │  enrollments    │  │
+│   └────────┬────────┘       │─────────────────│       │─────────────────│  │
+│            │                │ id (PK)         │◄──────│ student_id (FK) │  │
+│            │                │ user_id (FK)    │       │ course_id (FK) ─┼──┤
+│            │                │ email           │       │ invited_at      │  │
+│            │                │ email_hash      │       │ invite_accepted │  │
+│            │                │ name            │       └─────────────────┘  │
+│            │                └─────────────────┘                            │
+│            │                                                               │
+│            ▼                                                               │
+│   ┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐  │
+│   │     emails      │       │ auto_responses  │       │   faq_entries   │  │
+│   │─────────────────│       │─────────────────│       │─────────────────│  │
+│   │ id (PK)         │◄──────│ email_id (FK)   │       │ id (PK)         │  │
+│   │ course_id (FK)  │       │ draft_body      │       │ course_id (FK) ─┼──┤
+│   │ student_id (FK) │       │ final_body      │       │ question        │  │
+│   │ gmail_msg_id    │       │ confidence      │       │ answer          │  │
+│   │ subject         │       │ status          │       │ category        │  │
+│   │ body (encrypted)│       │ sent_at         │       │ status          │  │
+│   │ category        │       └─────────────────┘       │ embedding       │  │
+│   │ confidence      │                                 │ match_count     │  │
+│   │ embedding       │       ┌─────────────────┐       │ source_email_ids│  │
+│   │ status          │       │feedback_signals │       └─────────────────┘  │
+│   │ created_at      │       │─────────────────│                            │
+│   └─────────────────┘       │ id (PK)         │       ┌─────────────────┐  │
+│                             │ email_id (FK)   │       │ chat_messages   │  │
+│                             │ signal_type     │       │─────────────────│  │
+│                             │ detected_at     │       │ id (PK)         │  │
+│                             └─────────────────┘       │ course_id (FK)  │  │
+│                                                       │ student_id (FK) │  │
+│                                                       │ role            │  │
+│                                                       │ content         │  │
+│                                                       │ created_at      │  │
+│                                                       └─────────────────┘  │
+│                                                                             │
+│   Note: All tables use UUID primary keys. Vector columns use pgvector.     │
+│   OAuth tokens are encrypted at rest using AES-256-GCM.                    │
+│                                                                             │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## Next Steps (Phase 4: MCP Server Refactor)
+## FAQ System
 
-1. **Create standalone MCP server** (`mcp/server.ts`)
-   - stdio transport for Claude Desktop
-   - HTTP transport for remote access
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            FAQ LIFECYCLE                                     │
+│                                                                              │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                                                                      │   │
+│   │   SOURCES OF FAQ ENTRIES:                                            │   │
+│   │                                                                      │   │
+│   │   1. SYLLABUS BOOTSTRAP                                              │   │
+│   │      Professor uploads syllabus                                      │   │
+│   │      → Claude extracts 10-15 Q&A pairs                              │   │
+│   │      → Created as 'candidate' status                                 │   │
+│   │                                                                      │   │
+│   │   2. REACTIVE (from emails)                                          │   │
+│   │      Student asks novel question                                     │   │
+│   │      → No FAQ match above 0.82 similarity                           │   │
+│   │      → Professor responds                                            │   │
+│   │      → System proposes anonymized FAQ candidate                      │   │
+│   │                                                                      │   │
+│   │   3. BATCH (weekly job)                                              │   │
+│   │      Cluster recent questions                                        │   │
+│   │      → Find patterns (3+ similar unmatched questions)                │   │
+│   │      → Propose new candidates                                        │   │
+│   │                                                                      │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│   STATE MACHINE:                                                            │
+│                                                                              │
+│   ┌───────────┐     approve      ┌───────────┐      retire     ┌─────────┐ │
+│   │ candidate │────────────────►│  approved  │───────────────►│ retired │ │
+│   └───────────┘                  └───────────┘                 └─────────┘ │
+│        │                                                                    │
+│        │ reject                                                             │
+│        ▼                                                                    │
+│   ┌───────────┐                                                            │
+│   │ rejected  │                                                            │
+│   └───────────┘                                                            │
+│                                                                              │
+│   MATCHING:                                                                  │
+│   - Each FAQ entry has an embedding (1536 dim, OpenAI text-embedding-3)    │
+│   - Incoming email is embedded, cosine similarity computed                  │
+│   - Match threshold: 0.82 for FAQ, 0.85 for direct chatbot response        │
+│   - HNSW index for fast similarity search at scale                         │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
 
-2. **Implement course tools**
-   - `setup_course`, `list_courses`, `get_course_info`
+---
 
-3. **Implement knowledge base tools**
-   - `sync_syllabus`, `add_faq`, `list_faqs`, etc.
+## Anonymization Pipeline (FERPA Compliance)
 
-4. **Implement email tools**
-   - `check_emails`, `approve_response`, `draft_response`
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      ANONYMIZATION PIPELINE                                  │
+│                                                                              │
+│   Gate: Emails classified as 'personal' NEVER enter this pipeline           │
+│                                                                              │
+│   INPUT: "Hi Professor, I'm Alice Smith (as1234). I have a family           │
+│          emergency on March 15th and can't take the midterm. Can I          │
+│          reschedule? My mom is in the hospital."                            │
+│                                                                              │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │  STAGE 1: NER Removal                                                │   │
+│   │  - Remove names: "Alice Smith" → "[STUDENT]"                        │   │
+│   │  - Remove IDs: "as1234" → "[ID]"                                    │   │
+│   │  - Remove emails, phone numbers                                      │   │
+│   │                                                                      │   │
+│   │  → "Hi Professor, I'm [STUDENT] ([ID]). I have a family             │   │
+│   │     emergency on March 15th..."                                      │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                              │                                               │
+│                              ▼                                               │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │  STAGE 2: Circumstance Removal                                       │   │
+│   │  - Strip personal details: family, health, financial                 │   │
+│   │  - "family emergency", "mom is in the hospital" → removed           │   │
+│   │                                                                      │   │
+│   │  → "I can't take the midterm on March 15th. Can I reschedule?"      │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                              │                                               │
+│                              ▼                                               │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │  STAGE 3: Date Generalization                                        │   │
+│   │  - Specific dates → relative terms                                  │   │
+│   │  - "March 15th" → "the scheduled exam date"                         │   │
+│   │                                                                      │   │
+│   │  → "I can't take the midterm on the scheduled date. Can I           │   │
+│   │     reschedule?"                                                     │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                              │                                               │
+│                              ▼                                               │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │  STAGE 4: LLM Rewrite                                                │   │
+│   │  - Generalize to third-person canonical question                     │   │
+│   │  - Claude rewrites preserving intent, removing specifics             │   │
+│   │                                                                      │   │
+│   │  → "Can a student request to reschedule an exam?"                   │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│   OUTPUT: Generic FAQ candidate ready for professor review                  │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
 
-5. **Local OAuth flow**
-   - Browser popup for initial auth
-   - Secure token storage
+---
 
-6. **Remove web app** (optional)
-   - Strip Next.js pages if going pure MCP
-   - Or keep as optional web interface
+## Deployment
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         DEPLOYMENT ARCHITECTURE                              │
+│                                                                              │
+│   MVP: Single DigitalOcean Droplet ($48/month)                              │
+│                                                                              │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                     DigitalOcean Droplet                             │   │
+│   │                     (4GB RAM, 2 vCPU)                                │   │
+│   │                                                                      │   │
+│   │   ┌─────────────────────────────────────────────────────────────┐   │   │
+│   │   │                      Docker Compose                          │   │   │
+│   │   │                                                              │   │   │
+│   │   │   ┌───────────┐  ┌───────────┐  ┌───────────┐              │   │   │
+│   │   │   │  Next.js  │  │ PostgreSQL│  │   Redis   │              │   │   │
+│   │   │   │   App     │  │ + pgvector│  │           │              │   │   │
+│   │   │   │  :3000    │  │  :5432    │  │  :6379    │              │   │   │
+│   │   │   └───────────┘  └───────────┘  └───────────┘              │   │   │
+│   │   │                                                              │   │   │
+│   │   │   ┌───────────┐                                             │   │   │
+│   │   │   │  BullMQ   │                                             │   │   │
+│   │   │   │  Workers  │                                             │   │   │
+│   │   │   └───────────┘                                             │   │   │
+│   │   │                                                              │   │   │
+│   │   └─────────────────────────────────────────────────────────────┘   │   │
+│   │                                                                      │   │
+│   │   ┌─────────────────────────────────────────────────────────────┐   │   │
+│   │   │                       Nginx                                  │   │   │
+│   │   │   - SSL termination (Let's Encrypt)                         │   │   │
+│   │   │   - Reverse proxy to Next.js                                │   │   │
+│   │   │   - Rate limiting                                            │   │   │
+│   │   └─────────────────────────────────────────────────────────────┘   │   │
+│   │                                                                      │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│   External Dependencies:                                                     │
+│   - Google Cloud (Gmail API, Pub/Sub) - free within quotas                  │
+│   - Anthropic API - ~$0.01-0.05 per email processed                         │
+│   - OpenAI API - ~$0.0001 per embedding                                     │
+│   - Resend/Postmark - ~$0.001 per transactional email                       │
+│                                                                              │
+│   Estimated monthly cost for MVP (3-5 professors, ~500 emails/month):       │
+│   - Droplet: $48                                                             │
+│   - APIs: ~$20-50                                                            │
+│   - Total: ~$70-100/month                                                    │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -674,22 +607,12 @@ MCP Server: [calls get_stats tool]
 
 | Concern | Mitigation |
 |---------|------------|
-| OAuth tokens | Encrypted storage in `~/.course-assistant/` |
-| API access | Uses user's own Google account |
-| Data privacy | All data in user's own Drive |
-| MCP transport | stdio is local-only; HTTP should use HTTPS |
-| Email access | Scoped to read/send only (no delete) |
-
----
-
-## Comparison: Web App vs MCP Server
-
-| Aspect | Web App (Old) | MCP Server (New) |
-|--------|---------------|------------------|
-| Interface | Custom chat UI | Claude Desktop, Cursor |
-| Hosting | Vercel (~$0-20/mo) | Local (free) |
-| AI Costs | BYOK via stored key | User's Claude subscription |
-| Auth | NextAuth sessions | Local OAuth tokens |
-| Complexity | Full Next.js app | Lightweight MCP server |
-| Portability | Web only | Any MCP client |
-| Privacy | App sees all data | Data stays local |
+| OAuth tokens | AES-256-GCM encrypted at rest in database |
+| Magic link tokens | Cryptographically random, hashed (never stored plaintext), single-use, 15-min expiry |
+| Student invite URLs | Signed JWTs with 7-day expiry, include course_id to prevent cross-course use |
+| Email bodies | Encrypted at rest, deleted after course end + 1 semester |
+| API access | JWT sessions in httpOnly cookies, CSRF protection |
+| Prompt injection | Email content sanitized before LLM calls |
+| SQL injection | Parameterized queries everywhere |
+| Rate limiting | 100 req/min per user, 5 magic links/email/hour, 50 chatbot messages/student/day |
+| FERPA | Personal emails never enter FAQ pipeline, anonymization for all FAQ candidates |
