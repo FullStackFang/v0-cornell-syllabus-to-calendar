@@ -104,7 +104,8 @@ export function deriveSecretFromToken(accessToken: string): string {
  * Combined with app secret for security.
  */
 export function deriveSecretFromEmail(email: string): string {
-  const appSecret = process.env.NEXTAUTH_SECRET || "fallback-secret"
+  // Use ENCRYPTION_SECRET (preferred), falling back to NEXTAUTH_SECRET for backwards compatibility
+  const appSecret = process.env.ENCRYPTION_SECRET || process.env.NEXTAUTH_SECRET || "fallback-secret"
   return crypto
     .createHash("sha256")
     .update(email.toLowerCase() + appSecret)

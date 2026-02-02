@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { createClient } from "@/lib/supabase/server"
+import { getGmailToken } from "@/lib/integrations"
 import { createBatchEvents, listCalendarEvents } from "@/lib/google-calendar"
 import { searchEmails, getEmailThread, findPersonEmail, sendEmail, createDraft } from "@/lib/gmail"
 
@@ -14,7 +14,7 @@ interface SyllabusDataParam {
   assignments: Array<{ name: string; dueDate?: string; type?: string; weight?: string }>
 }
 
-function getSystemPrompt(syllabusData?: SyllabusDataParam) {
+function getSystemPrompt(syllabusData?: SyllabusDataParam, hasGmailAccess = false) {
   const today = new Date()
   // Use local date, not UTC (toISOString returns UTC which can be off by a day)
   const year = today.getFullYear()
@@ -42,12 +42,6 @@ Example of GOOD formatting:
 "Recent stuff you might have already handled:
 Homework 2 was due yesterday at midnight, worth 15 points"
 
-When searching emails:
-- Start with "I found X emails about [course]. Here's what matters:"
-- Group naturally by urgency in plain language: "Today's deadlines:", "Recent stuff:", "From earlier:"
-- Write in complete sentences, not fragmented bullet points
-- End with a casual offer like "Want me to pull up details from any of these?"
-
 When creating calendar events:
 - Use the create_calendar_events tool immediately
 - Calculate dates automatically (e.g., "tomorrow" = day after today)
@@ -66,6 +60,22 @@ When user asks about their schedule or availability:
 - Present the schedule conversationally, not as a data dump
 
 Be concise and human.`
+
+  if (!hasGmailAccess) {
+    basePrompt += `
+
+EMAIL ACCESS:
+Gmail is not connected. Email search, sending, and drafts are unavailable.
+If the user asks about emails, let them know they need to connect Gmail from Settings > Integrations.`
+  } else {
+    basePrompt += `
+
+When searching emails:
+- Start with "I found X emails about [course]. Here's what matters:"
+- Group naturally by urgency in plain language: "Today's deadlines:", "Recent stuff:", "From earlier:"
+- Write in complete sentences, not fragmented bullet points
+- End with a casual offer like "Want me to pull up details from any of these?"`
+  }
 
   if (syllabusData) {
     const schedulePreview = syllabusData.schedule?.slice(0, 5).map(s => `- ${s.date}: ${s.topic}`).join('\n') || 'None'
@@ -95,111 +105,127 @@ You have access to this syllabus data. Answer questions about the course using t
   return basePrompt
 }
 
-const tools: Anthropic.Tool[] = [
-  {
-    name: "create_calendar_events",
-    description: "Create events on the user's Google Calendar. Use this immediately when the user wants to add events. Calculate dates from context (e.g., 'tomorrow' means the day after today).",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        events: {
-          type: "array",
-          description: "Array of calendar events to create",
-          items: {
-            type: "object",
-            properties: {
-              title: { type: "string", description: "Event title" },
-              description: { type: "string", description: "Event description" },
-              startDate: { type: "string", description: "Start date in YYYY-MM-DD format" },
-              startTime: { type: "string", description: "Start time in HH:MM format (24-hour), e.g., '14:00' for 2pm" },
-              endDate: { type: "string", description: "End date in YYYY-MM-DD format (usually same as startDate)" },
-              endTime: { type: "string", description: "End time in HH:MM format (24-hour), e.g., '15:00' for 3pm" },
-              location: { type: "string", description: "Event location" },
-              attendees: { type: "array", items: { type: "string" }, description: "Email addresses of people to invite" },
+function getTools(hasGmailAccess: boolean): Anthropic.Tool[] {
+  const calendarTools: Anthropic.Tool[] = [
+    {
+      name: "create_calendar_events",
+      description: "Create events on the user's Google Calendar. Use this immediately when the user wants to add events. Calculate dates from context (e.g., 'tomorrow' means the day after today).",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          events: {
+            type: "array",
+            description: "Array of calendar events to create",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string", description: "Event title" },
+                description: { type: "string", description: "Event description" },
+                startDate: { type: "string", description: "Start date in YYYY-MM-DD format" },
+                startTime: { type: "string", description: "Start time in HH:MM format (24-hour), e.g., '14:00' for 2pm" },
+                endDate: { type: "string", description: "End date in YYYY-MM-DD format (usually same as startDate)" },
+                endTime: { type: "string", description: "End time in HH:MM format (24-hour), e.g., '15:00' for 3pm" },
+                location: { type: "string", description: "Event location" },
+                attendees: { type: "array", items: { type: "string" }, description: "Email addresses of people to invite" },
+              },
+              required: ["title", "startDate"],
             },
-            required: ["title", "startDate"],
           },
         },
+        required: ["events"],
       },
-      required: ["events"],
     },
-  },
-  {
-    name: "search_emails",
-    description: "Search the user's Gmail for emails. Use Gmail search syntax. For course searches, just use the course code (e.g., 'NBAE6921') - keep it simple.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        query: { type: "string", description: "Gmail search query. For courses, just use the course code directly." },
-        maxResults: { type: "number", description: "Maximum number of results (default 10)" },
+    {
+      name: "list_calendar_events",
+      description: "List the user's calendar events in a date range. Use this to check availability, find free time, see what's scheduled, or answer questions like 'what's on my calendar today?' or 'am I free at 3pm?'",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          startDate: { type: "string", description: "Start date in YYYY-MM-DD format" },
+          endDate: { type: "string", description: "End date in YYYY-MM-DD format (can be same as startDate for single day)" },
+        },
+        required: ["startDate", "endDate"],
       },
-      required: ["query"],
     },
-  },
-  {
-    name: "get_email_thread",
-    description: "Get the full content of an email thread to read or summarize it.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        threadId: { type: "string", description: "The Gmail thread ID" },
-      },
-      required: ["threadId"],
-    },
-  },
-  {
-    name: "find_person_email",
-    description: "Find someone's email address by searching past emails with them. Use this when the user wants to invite someone by name (e.g., 'invite Cristian') but didn't provide their email.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        name: { type: "string", description: "Person's name to search for" },
-      },
-      required: ["name"],
-    },
-  },
-  {
-    name: "send_email",
-    description: "Send an email to someone. Use this to reply to students or send messages. Always confirm with the user before sending.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        to: { type: "string", description: "Recipient email address" },
-        subject: { type: "string", description: "Email subject line" },
-        body: { type: "string", description: "Email body text" },
-        threadId: { type: "string", description: "Optional thread ID to reply to an existing conversation" },
-      },
-      required: ["to", "subject", "body"],
-    },
-  },
-  {
-    name: "create_draft",
-    description: "Create an email draft for the user to review before sending. Use this when drafting responses that need approval.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        to: { type: "string", description: "Recipient email address" },
-        subject: { type: "string", description: "Email subject line" },
-        body: { type: "string", description: "Email body text" },
-      },
-      required: ["to", "subject", "body"],
-    },
-  },
-  {
-    name: "list_calendar_events",
-    description: "List the user's calendar events in a date range. Use this to check availability, find free time, see what's scheduled, or answer questions like 'what's on my calendar today?' or 'am I free at 3pm?'",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        startDate: { type: "string", description: "Start date in YYYY-MM-DD format" },
-        endDate: { type: "string", description: "End date in YYYY-MM-DD format (can be same as startDate for single day)" },
-      },
-      required: ["startDate", "endDate"],
-    },
-  },
-]
+  ]
 
-async function executeTool(name: string, input: Record<string, unknown>, accessToken: string) {
+  if (!hasGmailAccess) {
+    return calendarTools
+  }
+
+  const emailTools: Anthropic.Tool[] = [
+    {
+      name: "search_emails",
+      description: "Search the user's Gmail for emails. Use Gmail search syntax. For course searches, just use the course code (e.g., 'NBAE6921') - keep it simple.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          query: { type: "string", description: "Gmail search query. For courses, just use the course code directly." },
+          maxResults: { type: "number", description: "Maximum number of results (default 10)" },
+        },
+        required: ["query"],
+      },
+    },
+    {
+      name: "get_email_thread",
+      description: "Get the full content of an email thread to read or summarize it.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          threadId: { type: "string", description: "The Gmail thread ID" },
+        },
+        required: ["threadId"],
+      },
+    },
+    {
+      name: "find_person_email",
+      description: "Find someone's email address by searching past emails with them. Use this when the user wants to invite someone by name (e.g., 'invite Cristian') but didn't provide their email.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          name: { type: "string", description: "Person's name to search for" },
+        },
+        required: ["name"],
+      },
+    },
+    {
+      name: "send_email",
+      description: "Send an email to someone. Use this to reply to students or send messages. Always confirm with the user before sending.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          to: { type: "string", description: "Recipient email address" },
+          subject: { type: "string", description: "Email subject line" },
+          body: { type: "string", description: "Email body text" },
+          threadId: { type: "string", description: "Optional thread ID to reply to an existing conversation" },
+        },
+        required: ["to", "subject", "body"],
+      },
+    },
+    {
+      name: "create_draft",
+      description: "Create an email draft for the user to review before sending. Use this when drafting responses that need approval.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          to: { type: "string", description: "Recipient email address" },
+          subject: { type: "string", description: "Email subject line" },
+          body: { type: "string", description: "Email body text" },
+        },
+        required: ["to", "subject", "body"],
+      },
+    },
+  ]
+
+  return [...calendarTools, ...emailTools]
+}
+
+async function executeTool(
+  name: string,
+  input: Record<string, unknown>,
+  calendarToken: string,
+  gmailToken: string | null
+) {
   console.log(`Executing tool: ${name}`, JSON.stringify(input, null, 2))
 
   switch (name) {
@@ -228,7 +254,7 @@ async function executeTool(name: string, input: Record<string, unknown>, accessT
       }))
 
       try {
-        const result = await createBatchEvents(accessToken, calendarEvents)
+        const result = await createBatchEvents(calendarToken, calendarEvents)
         console.log("Calendar result:", result)
         return { success: true, message: `Created ${result.created} calendar event(s)`, created: result.created, errors: result.errors }
       } catch (error) {
@@ -237,10 +263,13 @@ async function executeTool(name: string, input: Record<string, unknown>, accessT
       }
     }
     case "search_emails": {
+      if (!gmailToken) {
+        return { success: false, error: "Gmail not connected. Please connect Gmail from Settings > Integrations." }
+      }
       const query = input.query as string
       const maxResults = (input.maxResults as number) ?? 10
       try {
-        const emails = await searchEmails(accessToken, query, maxResults)
+        const emails = await searchEmails(gmailToken, query, maxResults)
         return {
           success: true,
           count: emails.length,
@@ -259,9 +288,12 @@ async function executeTool(name: string, input: Record<string, unknown>, accessT
       }
     }
     case "get_email_thread": {
+      if (!gmailToken) {
+        return { success: false, error: "Gmail not connected. Please connect Gmail from Settings > Integrations." }
+      }
       const threadId = input.threadId as string
       try {
-        const thread = await getEmailThread(accessToken, threadId)
+        const thread = await getEmailThread(gmailToken, threadId)
         return {
           success: true,
           threadId: thread.id,
@@ -279,9 +311,12 @@ async function executeTool(name: string, input: Record<string, unknown>, accessT
       }
     }
     case "find_person_email": {
+      if (!gmailToken) {
+        return { success: false, error: "Gmail not connected. Please connect Gmail from Settings > Integrations." }
+      }
       const name = input.name as string
       try {
-        const result = await findPersonEmail(accessToken, name)
+        const result = await findPersonEmail(gmailToken, name)
         if (result) {
           return {
             success: true,
@@ -302,12 +337,15 @@ async function executeTool(name: string, input: Record<string, unknown>, accessT
       }
     }
     case "send_email": {
+      if (!gmailToken) {
+        return { success: false, error: "Gmail not connected. Please connect Gmail from Settings > Integrations." }
+      }
       const to = input.to as string
       const subject = input.subject as string
       const body = input.body as string
       const threadId = input.threadId as string | undefined
       try {
-        const result = await sendEmail(accessToken, to, subject, body, threadId)
+        const result = await sendEmail(gmailToken, to, subject, body, threadId)
         return {
           success: true,
           message: `Email sent successfully to ${to}`,
@@ -320,11 +358,14 @@ async function executeTool(name: string, input: Record<string, unknown>, accessT
       }
     }
     case "create_draft": {
+      if (!gmailToken) {
+        return { success: false, error: "Gmail not connected. Please connect Gmail from Settings > Integrations." }
+      }
       const to = input.to as string
       const subject = input.subject as string
       const body = input.body as string
       try {
-        const result = await createDraft(accessToken, to, subject, body)
+        const result = await createDraft(gmailToken, to, subject, body)
         return {
           success: true,
           message: `Draft created successfully. You can find it in your Gmail drafts.`,
@@ -341,7 +382,7 @@ async function executeTool(name: string, input: Record<string, unknown>, accessT
       const endDate = input.endDate as string
       try {
         const events = await listCalendarEvents(
-          accessToken,
+          calendarToken,
           `${startDate}T00:00:00-05:00`,
           `${endDate}T23:59:59-05:00`
         )
@@ -367,14 +408,34 @@ async function executeTool(name: string, input: Record<string, unknown>, accessT
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions)
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
 
-  if (!session?.accessToken) {
+  if (!user) {
     return new Response("Unauthorized", { status: 401 })
   }
 
+  // Get Gmail token (may be null if not connected)
+  const gmailToken = await getGmailToken(user.id)
+
+  // For calendar, we currently use Gmail token for simplicity
+  // In a full implementation, calendar would be a separate connector
+  // For now, require Gmail to be connected for calendar operations too
+  const calendarToken = gmailToken
+
+  if (!calendarToken) {
+    return new Response(JSON.stringify({
+      error: "Gmail not connected",
+      message: "Please connect Gmail from Settings > Integrations to use this feature.",
+      connectUrl: "/settings/integrations",
+    }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+
   const { messages, syllabusData } = await req.json()
-  const accessToken = session.accessToken
+  const hasGmailAccess = !!gmailToken
 
   try {
     // Convert messages to Anthropic format
@@ -392,10 +453,12 @@ export async function POST(req: Request) {
       result: unknown
     }> = []
 
+    const tools = getTools(hasGmailAccess)
+
     let response = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 4096,
-      system: getSystemPrompt(syllabusData),
+      system: getSystemPrompt(syllabusData, hasGmailAccess),
       tools,
       messages: anthropicMessages,
     })
@@ -415,7 +478,8 @@ export async function POST(req: Request) {
           const toolResult = await executeTool(
             toolUseBlock.name,
             toolUseBlock.input as Record<string, unknown>,
-            accessToken
+            calendarToken,
+            gmailToken
           )
 
           // Track for frontend
@@ -449,7 +513,7 @@ export async function POST(req: Request) {
       response = await anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
         max_tokens: 4096,
-        system: getSystemPrompt(syllabusData),
+        system: getSystemPrompt(syllabusData, hasGmailAccess),
         tools,
         messages: anthropicMessages,
       })

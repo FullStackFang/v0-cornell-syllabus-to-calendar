@@ -1,9 +1,10 @@
 "use client"
 
-import { useState, useRef } from "react"
-import { useSession, signIn, signOut } from "next-auth/react"
+import { useState, useRef, useEffect } from "react"
+import { useAuth } from "@/components/providers"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { ChatInterface, ChatInterfaceHandle } from "@/components/chat-interface"
 import {
   Calendar,
@@ -13,14 +14,17 @@ import {
   BookOpen,
   Mail,
   Zap,
+  Settings,
+  Loader2,
+  CheckCircle,
 } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import Image from "next/image"
 import { RightPanel } from "@/components/right-panel"
 import type { SyllabusData, EmailMessage, CalendarEvent } from "@/types"
 
@@ -32,7 +36,7 @@ function calculateEndTime(startTime: string, durationHours: number): string {
 }
 
 export default function HomePage() {
-  const { data: session, status } = useSession()
+  const { user, isLoading, signOut } = useAuth()
   const router = useRouter()
   const chatRef = useRef<ChatInterfaceHandle>(null)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -40,6 +44,44 @@ export default function HomePage() {
   const [isAddingToCalendar, setIsAddingToCalendar] = useState(false)
   const [eventsAdded, setEventsAdded] = useState(false)
   const [isFindingEmails, setIsFindingEmails] = useState(false)
+
+  // Magic link form state
+  const [email, setEmail] = useState("")
+  const [isSendingMagicLink, setIsSendingMagicLink] = useState(false)
+  const [magicLinkSent, setMagicLinkSent] = useState(false)
+  const [magicLinkError, setMagicLinkError] = useState<string | null>(null)
+  const [cooldownSeconds, setCooldownSeconds] = useState(0)
+
+  // Cooldown timer effect
+  useEffect(() => {
+    // Check localStorage for existing cooldown
+    const storedCooldownEnd = localStorage.getItem("magicLinkCooldownEnd")
+    if (storedCooldownEnd) {
+      const remaining = Math.ceil((parseInt(storedCooldownEnd) - Date.now()) / 1000)
+      if (remaining > 0) {
+        setCooldownSeconds(remaining)
+      } else {
+        localStorage.removeItem("magicLinkCooldownEnd")
+      }
+    }
+  }, [])
+
+  // Countdown timer
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return
+
+    const timer = setInterval(() => {
+      setCooldownSeconds((prev) => {
+        if (prev <= 1) {
+          localStorage.removeItem("magicLinkCooldownEnd")
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [cooldownSeconds])
 
   // Right panel state
   const [rightPanelTab, setRightPanelTab] = useState<"syllabus" | "emails">("syllabus")
@@ -50,6 +92,60 @@ export default function HomePage() {
   // Selected email state
   const [selectedEmail, setSelectedEmail] = useState<EmailMessage | null>(null)
   const [isLoadingEmail, setIsLoadingEmail] = useState(false)
+
+  // Start cooldown timer (60 seconds for Supabase rate limit)
+  const startCooldown = (seconds: number = 60) => {
+    const cooldownEnd = Date.now() + seconds * 1000
+    localStorage.setItem("magicLinkCooldownEnd", cooldownEnd.toString())
+    setCooldownSeconds(seconds)
+  }
+
+  // Handle magic link sign in - use client-side Supabase for proper PKCE handling
+  const handleMagicLinkSignIn = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!email) {
+      setMagicLinkError("Please enter your email address")
+      return
+    }
+
+    if (cooldownSeconds > 0) {
+      setMagicLinkError(`Please wait ${cooldownSeconds} seconds before requesting another link`)
+      return
+    }
+
+    setIsSendingMagicLink(true)
+    setMagicLinkError(null)
+
+    try {
+      // Import and use client-side Supabase directly for proper PKCE storage
+      const { createClient } = await import("@/lib/supabase/client")
+      const supabase = createClient()
+
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      })
+
+      if (error) {
+        // If rate limited, start cooldown
+        if (error.message?.toLowerCase().includes("rate") || error.status === 429) {
+          startCooldown(60)
+        }
+        throw new Error(error.message || "Failed to send magic link")
+      }
+
+      // Success - start cooldown and show success
+      startCooldown(60)
+      setMagicLinkSent(true)
+    } catch (error) {
+      setMagicLinkError(error instanceof Error ? error.message : "Failed to send magic link")
+    } finally {
+      setIsSendingMagicLink(false)
+    }
+  }
 
   // Handle file upload - parse and show in right panel
   const handleFileSelect = async (file: File) => {
@@ -245,8 +341,13 @@ Group results by urgency - what's due today or soon first, then recent items, th
     setSelectedEmail(null)
   }
 
+  const handleSignOut = async () => {
+    await signOut()
+    router.push("/")
+  }
+
   // Loading state
-  if (status === "loading") {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-warm flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -259,8 +360,8 @@ Group results by urgency - what's due today or soon first, then recent items, th
     )
   }
 
-  // Not signed in - show landing page
-  if (!session) {
+  // Not signed in - show landing page with magic link form
+  if (!user) {
     return (
       <div className="min-h-screen bg-gradient-warm flex flex-col relative overflow-hidden">
         {/* Decorative background elements */}
@@ -278,14 +379,6 @@ Group results by urgency - what's due today or soon first, then recent items, th
               </div>
               <span className="font-semibold text-lg text-foreground tracking-tight">Syllabus Agent</span>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="rounded-full px-5 hover-lift"
-              onClick={() => signIn("google")}
-            >
-              Sign In
-            </Button>
           </div>
         </header>
 
@@ -309,33 +402,71 @@ Group results by urgency - what's due today or soon first, then recent items, th
               everything to Google Calendar in seconds.
             </p>
 
-            {/* CTA Button */}
-            <div className="animate-fade-in-up stagger-3">
-              <Button
-                size="lg"
-                className="h-14 px-8 text-base rounded-full shadow-elevated hover-lift font-medium"
-                onClick={() => signIn("google")}
-              >
-                <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24">
-                  <path
-                    fill="currentColor"
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                  />
-                </svg>
-                Continue with Google
-              </Button>
+            {/* Magic Link Form */}
+            <div className="animate-fade-in-up stagger-3 max-w-md mx-auto">
+              {magicLinkSent ? (
+                <div className="bg-card border border-border rounded-2xl p-8 shadow-soft">
+                  <div className="flex flex-col items-center gap-4">
+                    <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                      <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
+                    </div>
+                    <h2 className="text-xl font-semibold">Check your email</h2>
+                    <p className="text-muted-foreground text-center">
+                      We sent a magic link to <span className="font-medium text-foreground">{email}</span>.
+                      Click the link in the email to sign in.
+                    </p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setMagicLinkSent(false)
+                        setEmail("")
+                      }}
+                      disabled={cooldownSeconds > 0}
+                    >
+                      {cooldownSeconds > 0
+                        ? `Resend available in ${cooldownSeconds}s`
+                        : "Use a different email"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleMagicLinkSignIn} className="space-y-4">
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <Input
+                      type="email"
+                      placeholder="Enter your email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="h-14 px-5 text-base rounded-full flex-1"
+                      disabled={isSendingMagicLink}
+                    />
+                    <Button
+                      type="submit"
+                      size="lg"
+                      className="h-14 px-8 text-base rounded-full shadow-elevated hover-lift font-medium whitespace-nowrap"
+                      disabled={isSendingMagicLink || cooldownSeconds > 0}
+                    >
+                      {isSendingMagicLink ? (
+                        <>
+                          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                          Sending...
+                        </>
+                      ) : cooldownSeconds > 0 ? (
+                        `Wait ${cooldownSeconds}s`
+                      ) : (
+                        "Sign In"
+                      )}
+                    </Button>
+                  </div>
+                  {magicLinkError && (
+                    <p className="text-sm text-destructive">{magicLinkError}</p>
+                  )}
+                  <p className="text-sm text-muted-foreground">
+                    We&apos;ll send you a magic link to sign in. No password needed.
+                  </p>
+                </form>
+              )}
             </div>
 
             {/* Feature pills */}
@@ -379,25 +510,19 @@ Group results by urgency - what's due today or soon first, then recent items, th
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm" className="gap-2 rounded-full px-3 hover:bg-muted">
-                {session.user?.image ? (
-                  <Image
-                    src={session.user.image}
-                    alt={session.user.name || "User"}
-                    width={32}
-                    height={32}
-                    className="rounded-full ring-2 ring-border"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                    <User className="w-4 h-4 text-primary" />
-                  </div>
-                )}
-                <span className="hidden sm:inline font-medium">{session.user?.name || "User"}</span>
+                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                  <User className="w-4 h-4 text-primary" />
+                </div>
+                <span className="hidden sm:inline font-medium">{user.email}</span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={() => signOut()} className="text-destructive focus:text-destructive">
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onClick={() => router.push("/settings/integrations")}>
+                <Settings className="w-4 h-4 mr-2" />
+                Integrations
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleSignOut} className="text-destructive focus:text-destructive">
                 <LogOut className="w-4 h-4 mr-2" />
                 Sign Out
               </DropdownMenuItem>

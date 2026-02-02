@@ -1,16 +1,27 @@
 import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { createClient } from "@/lib/supabase/server"
+import { getGmailToken } from "@/lib/integrations"
 import { searchEmails } from "@/lib/gmail"
 import { buildCourseEmailQuery, groupEmails } from "@/lib/email-categorization"
 import type { SyllabusData, EmailMessage } from "@/types"
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions)
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    if (!session?.accessToken) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const accessToken = await getGmailToken(user.id)
+
+    if (!accessToken) {
+      return NextResponse.json({
+        error: "Gmail not connected",
+        message: "Please connect Gmail from Settings > Integrations",
+        connectUrl: "/settings/integrations",
+      }, { status: 403 })
     }
 
     const { syllabusData, maxResults = 50 } = (await request.json()) as {
@@ -39,7 +50,7 @@ export async function POST(request: Request) {
     }
 
     // Search emails using the constructed query
-    const emails = await searchEmails(session.accessToken, query, maxResults)
+    const emails = await searchEmails(accessToken, query, maxResults)
 
     // Cast to the shared EmailMessage type
     const typedEmails: EmailMessage[] = emails.map(email => ({

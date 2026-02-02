@@ -1,15 +1,27 @@
 import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { createClient } from "@/lib/supabase/server"
+import { getGmailToken } from "@/lib/integrations"
 import { createBatchEvents, listUserCalendars } from "@/lib/google-calendar"
 import type { CalendarEvent } from "@/types"
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions)
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    if (!session?.accessToken) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    // Get Gmail token (which also provides calendar access)
+    const accessToken = await getGmailToken(user.id)
+
+    if (!accessToken) {
+      return NextResponse.json({
+        error: "Gmail not connected",
+        message: "Please connect Gmail from Settings > Integrations to sync calendar events",
+        connectUrl: "/settings/integrations",
+      }, { status: 403 })
     }
 
     const { events, calendarId = "primary" } = (await request.json()) as {
@@ -21,7 +33,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Events array required" }, { status: 400 })
     }
 
-    const result = await createBatchEvents(session.accessToken, events, calendarId)
+    const result = await createBatchEvents(accessToken, events, calendarId)
 
     return NextResponse.json({
       success: true,
@@ -36,13 +48,24 @@ export async function POST(request: Request) {
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    if (!session?.accessToken) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const calendars = await listUserCalendars(session.accessToken)
+    const accessToken = await getGmailToken(user.id)
+
+    if (!accessToken) {
+      return NextResponse.json({
+        error: "Gmail not connected",
+        message: "Please connect Gmail from Settings > Integrations",
+        connectUrl: "/settings/integrations",
+      }, { status: 403 })
+    }
+
+    const calendars = await listUserCalendars(accessToken)
 
     return NextResponse.json({ calendars })
   } catch (error) {

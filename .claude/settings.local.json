@@ -11,7 +11,9 @@
       "Bash(npx tsc:*)",
       "Bash(npm run mcp:status:*)",
       "Bash(npx tsx:*)",
-      "Bash(timeout 10s npx tsx:*)"
+      "Bash(timeout 10s npx tsx:*)",
+      "Bash(find:*)",
+      "Bash(npx shadcn@latest add:*)"
     ]
   }
 }

@@ -1,14 +1,25 @@
 import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { createClient } from "@/lib/supabase/server"
+import { getGmailToken } from "@/lib/integrations"
 import { searchEmails, getEmailThread, getEmailContent } from "@/lib/gmail"
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions)
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    if (!session?.accessToken) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const accessToken = await getGmailToken(user.id)
+
+    if (!accessToken) {
+      return NextResponse.json({
+        error: "Gmail not connected",
+        message: "Please connect Gmail from Settings > Integrations",
+        connectUrl: "/settings/integrations",
+      }, { status: 403 })
     }
 
     const { query, maxResults = 10 } = (await request.json()) as {
@@ -20,7 +31,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Search query required" }, { status: 400 })
     }
 
-    const emails = await searchEmails(session.accessToken, query, maxResults)
+    const emails = await searchEmails(accessToken, query, maxResults)
 
     return NextResponse.json({ emails })
   } catch (error) {
@@ -31,10 +42,21 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   try {
-    const session = await getServerSession(authOptions)
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    if (!session?.accessToken) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const accessToken = await getGmailToken(user.id)
+
+    if (!accessToken) {
+      return NextResponse.json({
+        error: "Gmail not connected",
+        message: "Please connect Gmail from Settings > Integrations",
+        connectUrl: "/settings/integrations",
+      }, { status: 403 })
     }
 
     const { searchParams } = new URL(request.url)
@@ -42,12 +64,12 @@ export async function GET(request: Request) {
     const messageId = searchParams.get("messageId")
 
     if (threadId) {
-      const thread = await getEmailThread(session.accessToken, threadId)
+      const thread = await getEmailThread(accessToken, threadId)
       return NextResponse.json({ thread })
     }
 
     if (messageId) {
-      const message = await getEmailContent(session.accessToken, messageId)
+      const message = await getEmailContent(accessToken, messageId)
       return NextResponse.json({ message })
     }
 
