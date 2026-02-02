@@ -20,11 +20,11 @@ const getGmailUrl = (threadId: string) =>
 type EmailTag = "assignment" | "project" | "announcement" | "schedule" | "general"
 
 const tagConfig: Record<EmailTag, { label: string; color: string; bgColor: string; borderColor: string }> = {
-  assignment: { label: "Assignments", color: "text-orange-700 dark:text-orange-300", bgColor: "bg-orange-50 dark:bg-orange-950", borderColor: "border-orange-200 dark:border-orange-800" },
-  project: { label: "Projects", color: "text-purple-700 dark:text-purple-300", bgColor: "bg-purple-50 dark:bg-purple-950", borderColor: "border-purple-200 dark:border-purple-800" },
-  announcement: { label: "Announcements", color: "text-blue-700 dark:text-blue-300", bgColor: "bg-blue-50 dark:bg-blue-950", borderColor: "border-blue-200 dark:border-blue-800" },
-  schedule: { label: "Schedule", color: "text-green-700 dark:text-green-300", bgColor: "bg-green-50 dark:bg-green-950", borderColor: "border-green-200 dark:border-green-800" },
-  general: { label: "General", color: "text-gray-700 dark:text-gray-300", bgColor: "bg-gray-50 dark:bg-gray-800", borderColor: "border-gray-200 dark:border-gray-700" },
+  assignment: { label: "Assignments", color: "text-amber-700 dark:text-amber-300", bgColor: "bg-amber-50 dark:bg-amber-950", borderColor: "border-amber-200 dark:border-amber-800" },
+  project: { label: "Projects", color: "text-violet-700 dark:text-violet-300", bgColor: "bg-violet-50 dark:bg-violet-950", borderColor: "border-violet-200 dark:border-violet-800" },
+  announcement: { label: "Announcements", color: "text-sky-700 dark:text-sky-300", bgColor: "bg-sky-50 dark:bg-sky-950", borderColor: "border-sky-200 dark:border-sky-800" },
+  schedule: { label: "Schedule", color: "text-emerald-700 dark:text-emerald-300", bgColor: "bg-emerald-50 dark:bg-emerald-950", borderColor: "border-emerald-200 dark:border-emerald-800" },
+  general: { label: "General", color: "text-stone-700 dark:text-stone-300", bgColor: "bg-stone-50 dark:bg-stone-900", borderColor: "border-stone-200 dark:border-stone-700" },
 }
 
 // Auto-detect tag from email subject/content
@@ -58,24 +58,17 @@ function ToolResultCard({
 }) {
   const data = result as Record<string, unknown>
 
-  const icons: Record<string, typeof Calendar> = {
-    create_calendar_events: Calendar,
-    search_emails: Mail,
-    summarize_email_thread: Mail,
-    parse_syllabus: FileText,
-  }
-
-  const Icon = icons[toolName] || FileText
-
   if (toolName === "create_calendar_events" && data.success) {
     return (
-      <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-3 mt-2">
-        <div className="flex items-center gap-2 text-green-700 dark:text-green-300 font-medium">
-          <Calendar className="h-4 w-4" />
+      <div className="bg-emerald-50 dark:bg-emerald-950/50 border-2 border-emerald-200 dark:border-emerald-800 rounded-2xl p-4 mt-3 shadow-soft">
+        <div className="flex items-center gap-3 text-emerald-700 dark:text-emerald-300 font-semibold">
+          <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center">
+            <Calendar className="h-4 w-4" />
+          </div>
           {data.message as string}
         </div>
         {(data.errors as string[])?.length > 0 && (
-          <div className="text-sm text-red-600 dark:text-red-400 mt-1">
+          <div className="text-sm text-red-600 dark:text-red-400 mt-2 pl-11">
             Errors: {(data.errors as string[]).join(", ")}
           </div>
         )}
@@ -105,9 +98,11 @@ function ToolResultCard({
     const tagOrder: EmailTag[] = ["assignment", "project", "schedule", "announcement", "general"]
 
     return (
-      <div className="bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-3 mt-2 overflow-hidden">
-        <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300 font-medium mb-3">
-          <Mail className="h-4 w-4" />
+      <div className="bg-card border-2 border-border rounded-2xl p-4 mt-3 overflow-hidden shadow-soft">
+        <div className="flex items-center gap-3 text-foreground font-semibold mb-4">
+          <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
+            <Mail className="h-4 w-4 text-primary" />
+          </div>
           Found {data.count as number} emails
         </div>
         <div className="space-y-3">
@@ -116,15 +111,15 @@ function ToolResultCard({
             if (!tagEmails || tagEmails.length === 0) return null
             const config = tagConfig[tag]
             return (
-              <div key={tag} className={cn("rounded-lg border p-2", config.bgColor, config.borderColor)}>
-                <div className={cn("text-xs font-semibold mb-2 px-1", config.color)}>
+              <div key={tag} className={cn("rounded-xl border-2 p-3", config.bgColor, config.borderColor)}>
+                <div className={cn("text-xs font-bold mb-2 px-1 uppercase tracking-wide", config.color)}>
                   {config.label} ({tagEmails.length})
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   {tagEmails.map((email, i) => (
                     <div
                       key={i}
-                      className="group bg-white dark:bg-gray-800 rounded-md p-2.5 border border-transparent hover:border-gray-300 dark:hover:border-gray-600 transition-colors cursor-pointer"
+                      className="group bg-background/80 backdrop-blur-sm rounded-xl p-3 border-2 border-transparent hover:border-primary/20 transition-all cursor-pointer hover-lift"
                       onClick={() => onEmailSelect?.({
                         id: email.id,
                         threadId: email.threadId,
@@ -136,10 +131,10 @@ function ToolResultCard({
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium text-gray-900 dark:text-gray-100 text-sm truncate">
+                          <div className="font-semibold text-foreground text-sm truncate">
                             {email.subject || "(No subject)"}
                           </div>
-                          <div className="text-gray-500 dark:text-gray-400 text-xs mt-0.5 truncate">
+                          <div className="text-muted-foreground text-xs mt-0.5 truncate">
                             {email.from}
                           </div>
                         </div>
@@ -148,7 +143,7 @@ function ToolResultCard({
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
-                          className="shrink-0 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="shrink-0 p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-all"
                           title="Open in Gmail"
                         >
                           <ExternalLink className="h-3.5 w-3.5" />
@@ -168,24 +163,26 @@ function ToolResultCard({
   if (toolName === "parse_syllabus" && data.success) {
     const syllabus = data.data as SyllabusData
     return (
-      <div className="bg-purple-50 dark:bg-purple-950 border border-purple-200 dark:border-purple-800 rounded-lg p-3 mt-2">
-        <div className="flex items-center gap-2 text-purple-700 dark:text-purple-300 font-medium mb-2">
-          <FileText className="h-4 w-4" />
+      <div className="bg-accent/30 border-2 border-accent-foreground/20 rounded-2xl p-4 mt-3 shadow-soft">
+        <div className="flex items-center gap-3 text-accent-foreground font-semibold mb-3">
+          <div className="w-8 h-8 rounded-xl bg-accent flex items-center justify-center">
+            <FileText className="h-4 w-4" />
+          </div>
           Parsed Syllabus
         </div>
-        <div className="text-sm text-gray-700 dark:text-gray-300">
-          <div><strong>{syllabus.course.code}</strong>: {syllabus.course.name}</div>
-          <div>Instructor: {syllabus.course.instructor}</div>
-          <div>{syllabus.schedule.length} class sessions · {syllabus.assignments.length} assignments</div>
+        <div className="text-sm text-foreground pl-11 space-y-1">
+          <div><span className="font-semibold">{syllabus.course.code}</span>: {syllabus.course.name}</div>
+          <div className="text-muted-foreground">Instructor: {syllabus.course.instructor}</div>
+          <div className="text-muted-foreground">{syllabus.schedule.length} class sessions, {syllabus.assignments.length} assignments</div>
         </div>
         {onFindEmails && (
           <Button
-            variant="outline"
+            variant="secondary"
             size="sm"
-            className="mt-3 gap-2"
+            className="mt-4 ml-11 rounded-full"
             onClick={() => onFindEmails(syllabus)}
           >
-            <Search className="h-3.5 w-3.5" />
+            <Search className="h-3.5 w-3.5 mr-2" />
             Find Related Emails
           </Button>
         )}
@@ -206,19 +203,19 @@ export function ChatMessage({ message, onFindEmails, onEmailSelect }: ChatMessag
   const isUser = message.role === "user"
 
   return (
-    <div className={cn("flex gap-3 p-4", isUser ? "bg-transparent" : "bg-gray-50 dark:bg-gray-900")}>
+    <div className={cn("flex gap-4 p-6", isUser ? "bg-transparent" : "bg-card/50")}>
       <div
         className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-soft",
           isUser
-            ? "bg-primary text-primary-foreground"
-            : "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+            ? "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground"
+            : "bg-secondary text-secondary-foreground"
         )}
       >
-        {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+        {isUser ? <User className="h-5 w-5" /> : <Bot className="h-5 w-5" />}
       </div>
       <div className="flex-1 min-w-0 space-y-2">
-        <div className="prose dark:prose-invert max-w-none text-sm break-words">
+        <div className="prose dark:prose-invert max-w-none text-sm break-words leading-relaxed">
           {message.content}
         </div>
         {message.toolInvocations?.map((invocation, i) => (

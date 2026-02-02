@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHand
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ChatMessage } from "@/components/chat-message"
-import { Send, Paperclip, Loader2 } from "lucide-react"
+import { Send, Paperclip, Loader2, MessageSquare } from "lucide-react"
 import type { Message } from "ai"
 import type { SyllabusData, EmailMessage } from "@/types"
 
@@ -226,22 +226,22 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   }
 
   return (
-    <div className="flex flex-col h-full min-w-0">
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+    <div className="flex flex-col h-full min-w-0 bg-gradient-warm">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center p-8">
-            <div className="bg-primary/10 rounded-full p-4 mb-4">
-              <Send className="h-8 w-8 text-primary" />
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center mb-6 shadow-soft">
+              <MessageSquare className="h-10 w-10 text-primary" />
             </div>
-            <h3 className="text-lg font-semibold mb-2">Syllabus Calendar Agent</h3>
-            <p className="text-muted-foreground max-w-md">
+            <h3 className="text-2xl font-display font-semibold text-foreground mb-3">Syllabus Calendar Agent</h3>
+            <p className="text-muted-foreground max-w-md leading-relaxed mb-8">
               Upload a syllabus PDF or ask me to help with your course schedule. I can create
               calendar events, search your emails for course-related content, and more.
             </p>
-            <div className="flex gap-2 mt-4">
+            <div className="flex gap-3">
               <Button
                 variant="outline"
-                size="sm"
+                className="rounded-full px-6"
                 onClick={() => fileInputRef.current?.click()}
               >
                 <Paperclip className="h-4 w-4 mr-2" />
@@ -250,16 +250,18 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             </div>
           </div>
         ) : (
-          <div className="divide-y divide-gray-200 dark:divide-gray-800">
-            {messages.map((message) => (
-              <ChatMessage key={message.id} message={message} onFindEmails={onFindEmails} onEmailSelect={onEmailSelect} />
+          <div className="divide-y divide-border/50">
+            {messages.map((message, index) => (
+              <div key={message.id} className="animate-fade-in-up" style={{ animationDelay: `${index * 50}ms` }}>
+                <ChatMessage message={message} onFindEmails={onFindEmails} onEmailSelect={onEmailSelect} />
+              </div>
             ))}
             {isLoading && (
-              <div className="flex gap-3 p-4 bg-gray-50 dark:bg-gray-900">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700">
-                  <Loader2 className="h-4 w-4 animate-spin text-gray-600 dark:text-gray-300" />
+              <div className="flex gap-4 p-6 bg-card/50">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-secondary shadow-soft">
+                  <Loader2 className="h-5 w-5 animate-spin text-secondary-foreground" />
                 </div>
-                <div className="flex items-center text-sm text-muted-foreground">
+                <div className="flex items-center text-sm text-muted-foreground font-medium">
                   Thinking...
                 </div>
               </div>
@@ -269,8 +271,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         )}
       </div>
 
-      <div className="border-t border-gray-200 dark:border-gray-800 p-4">
-        <form onSubmit={handleSubmit} className="flex gap-2">
+      <div className="border-t border-border/50 p-4 bg-background/80 backdrop-blur-sm">
+        <form onSubmit={handleSubmit} className="flex gap-3 max-w-4xl mx-auto">
           <input
             ref={fileInputRef}
             type="file"
@@ -282,6 +284,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             type="button"
             variant="outline"
             size="icon"
+            className="shrink-0"
             onClick={() => fileInputRef.current?.click()}
             disabled={isLoading}
           >
@@ -294,11 +297,14 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             disabled={isLoading}
             className="flex-1"
           />
-          <Button type="submit" disabled={isLoading || !input.trim()}>
+          <Button type="submit" disabled={isLoading || !input.trim()} className="shrink-0 px-5">
             {isLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <Send className="h-4 w-4" />
+              <>
+                <span className="hidden sm:inline mr-2">Send</span>
+                <Send className="h-4 w-4" />
+              </>
             )}
           </Button>
         </form>

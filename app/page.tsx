@@ -10,6 +10,9 @@ import {
   Sparkles,
   User,
   LogOut,
+  BookOpen,
+  Mail,
+  Zap,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -245,8 +248,13 @@ Group results by urgency - what's due today or soon first, then recent items, th
   // Loading state
   if (status === "loading") {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Loading...</div>
+      <div className="min-h-screen bg-gradient-warm flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center animate-pulse-soft">
+            <Calendar className="w-6 h-6 text-primary" />
+          </div>
+          <p className="text-muted-foreground font-medium">Loading...</p>
+        </div>
       </div>
     )
   }
@@ -254,63 +262,101 @@ Group results by urgency - what's due today or soon first, then recent items, th
   // Not signed in - show landing page
   if (!session) {
     return (
-      <div className="min-h-screen bg-background flex flex-col">
-        <header className="border-b border-border shrink-0">
-          <div className="px-6 h-14 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                <Calendar className="w-4 h-4 text-primary-foreground" />
+      <div className="min-h-screen bg-gradient-warm flex flex-col relative overflow-hidden">
+        {/* Decorative background elements */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-primary/5 blur-3xl" />
+          <div className="absolute top-1/2 -left-32 w-80 h-80 rounded-full bg-accent/10 blur-3xl" />
+          <div className="absolute bottom-0 right-1/4 w-64 h-64 rounded-full bg-secondary/20 blur-3xl" />
+        </div>
+
+        <header className="border-b border-border/50 backdrop-blur-sm bg-background/60 shrink-0 relative z-10">
+          <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-soft">
+                <Calendar className="w-5 h-5 text-primary-foreground" />
               </div>
-              <span className="font-semibold text-foreground">Syllabus Agent</span>
+              <span className="font-semibold text-lg text-foreground tracking-tight">Syllabus Agent</span>
             </div>
-            <Button size="sm" onClick={() => signIn("google")}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="rounded-full px-5 hover-lift"
+              onClick={() => signIn("google")}
+            >
               Sign In
             </Button>
           </div>
         </header>
 
-        <main className="flex-1 flex flex-col items-center justify-center px-6 py-20">
+        <main className="flex-1 flex flex-col items-center justify-center px-6 py-16 relative z-10">
           <div className="max-w-2xl text-center">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6">
-              <Sparkles className="w-3.5 h-3.5" />
+            {/* Badge */}
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-secondary border border-secondary-foreground/10 text-secondary-foreground text-sm font-medium mb-8 animate-fade-in-up">
+              <Sparkles className="w-4 h-4" />
               <span>AI-Powered for Cornell EMBA</span>
             </div>
 
-            <h1 className="text-4xl md:text-5xl font-semibold tracking-tight text-foreground leading-tight">
+            {/* Headline */}
+            <h1 className="text-4xl sm:text-5xl md:text-6xl font-display font-semibold tracking-tight text-foreground leading-[1.1] mb-6 animate-fade-in-up stagger-1">
               Turn your syllabi into{" "}
-              <span className="text-primary">calendar events</span>
+              <span className="text-gradient">calendar events</span>
             </h1>
 
-            <p className="mt-6 text-lg text-muted-foreground max-w-xl mx-auto leading-relaxed">
+            {/* Subheadline */}
+            <p className="text-lg sm:text-xl text-muted-foreground max-w-xl mx-auto leading-relaxed mb-10 animate-fade-in-up stagger-2">
               Upload a PDF, chat with an AI agent, search your emails, and sync
               everything to Google Calendar in seconds.
             </p>
 
-            <Button
-              size="lg"
-              className="mt-10 h-12 px-8 text-base rounded-full"
-              onClick={() => signIn("google")}
-            >
-              <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
-                <path
-                  fill="currentColor"
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                />
-                <path
-                  fill="currentColor"
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                />
-                <path
-                  fill="currentColor"
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                />
-                <path
-                  fill="currentColor"
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                />
-              </svg>
-              Continue with Google
-            </Button>
+            {/* CTA Button */}
+            <div className="animate-fade-in-up stagger-3">
+              <Button
+                size="lg"
+                className="h-14 px-8 text-base rounded-full shadow-elevated hover-lift font-medium"
+                onClick={() => signIn("google")}
+              >
+                <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24">
+                  <path
+                    fill="currentColor"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="currentColor"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="currentColor"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                  />
+                  <path
+                    fill="currentColor"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                  />
+                </svg>
+                Continue with Google
+              </Button>
+            </div>
+
+            {/* Feature pills */}
+            <div className="flex flex-wrap items-center justify-center gap-3 mt-12 animate-fade-in-up stagger-4">
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-card border border-border text-sm text-muted-foreground">
+                <BookOpen className="w-4 h-4 text-primary" />
+                <span>PDF Parsing</span>
+              </div>
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-card border border-border text-sm text-muted-foreground">
+                <Mail className="w-4 h-4 text-primary" />
+                <span>Email Search</span>
+              </div>
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-card border border-border text-sm text-muted-foreground">
+                <Calendar className="w-4 h-4 text-primary" />
+                <span>Calendar Sync</span>
+              </div>
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-card border border-border text-sm text-muted-foreground">
+                <Zap className="w-4 h-4 text-primary" />
+                <span>AI Assistant</span>
+              </div>
+            </div>
           </div>
         </main>
       </div>
@@ -319,39 +365,39 @@ Group results by urgency - what's due today or soon first, then recent items, th
 
   // Signed in - show main app with upload + chat
   return (
-    <div className="h-screen flex flex-col bg-background">
+    <div className="h-screen flex flex-col bg-gradient-warm">
       {/* Header */}
-      <header className="shrink-0 bg-background/80 backdrop-blur-xl border-b border-border">
-        <div className="px-6 h-14 flex items-center justify-between">
-          <a href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <Calendar className="w-4 h-4 text-primary-foreground" />
+      <header className="shrink-0 bg-background/80 backdrop-blur-xl border-b border-border/50">
+        <div className="px-6 h-16 flex items-center justify-between">
+          <a href="/" className="flex items-center gap-3 group">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-soft group-hover:shadow-elevated transition-shadow">
+              <Calendar className="w-5 h-5 text-primary-foreground" />
             </div>
-            <span className="font-semibold text-foreground">Syllabus Agent</span>
+            <span className="font-semibold text-lg text-foreground tracking-tight">Syllabus Agent</span>
           </a>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-2">
+              <Button variant="ghost" size="sm" className="gap-2 rounded-full px-3 hover:bg-muted">
                 {session.user?.image ? (
                   <Image
                     src={session.user.image}
                     alt={session.user.name || "User"}
-                    width={28}
-                    height={28}
-                    className="rounded-full"
+                    width={32}
+                    height={32}
+                    className="rounded-full ring-2 ring-border"
                     referrerPolicy="no-referrer"
                   />
                 ) : (
-                  <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
                     <User className="w-4 h-4 text-primary" />
                   </div>
                 )}
-                <span className="hidden sm:inline">{session.user?.name || "User"}</span>
+                <span className="hidden sm:inline font-medium">{session.user?.name || "User"}</span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => signOut()}>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={() => signOut()} className="text-destructive focus:text-destructive">
                 <LogOut className="w-4 h-4 mr-2" />
                 Sign Out
               </DropdownMenuItem>
@@ -368,7 +414,7 @@ Group results by urgency - what's due today or soon first, then recent items, th
         </div>
 
         {/* Right Panel - Always visible tabbed panel */}
-        <div className="w-[420px] border-l border-border bg-background shrink-0 overflow-hidden">
+        <div className="w-[420px] border-l border-border/50 bg-card/50 backdrop-blur-sm shrink-0 overflow-hidden">
           <RightPanel
             syllabusData={syllabusData}
             onFileSelect={handleFileSelect}

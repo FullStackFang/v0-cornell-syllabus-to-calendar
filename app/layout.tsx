@@ -1,17 +1,24 @@
 import type React from "react"
 import type { Metadata, Viewport } from "next"
-import { Inter } from "next/font/google"
+import { DM_Sans, Fraunces } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { Providers } from "@/components/providers"
 import "./globals.css"
 
-const inter = Inter({
+const dmSans = DM_Sans({
   subsets: ["latin"],
   display: "swap",
+  variable: "--font-sans",
+})
+
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-display",
 })
 
 export const metadata: Metadata = {
-  title: "Syllabus Calendar Agent | Cornell EMBA",
+  title: "Syllabus Agent | Cornell EMBA",
   description:
     "AI-powered syllabus parser that automatically extracts course information and creates Google Calendar events.",
   generator: "v0.app",
@@ -35,7 +42,7 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: "#B31B1B",
+  themeColor: "#C75B39",
 }
 
 export default function RootLayout({
@@ -45,7 +52,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.className} antialiased`}>
+      <body className={`${dmSans.variable} ${fraunces.variable} font-sans antialiased`}>
         <Providers>
           {children}
         </Providers>
