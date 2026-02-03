@@ -205,6 +205,17 @@ CourseFlow uses Gmail's native plus-addressing as a zero-config routing mechanis
 - `prof+cs101@uni.edu` routes to the same inbox but CourseFlow detects the `+cs101` tag
 - Each course gets a unique plus-address computed from `{email_local}+{course_code}@{domain}`
 
+### Course Identity
+
+A course is uniquely identified by the combination of:
+- **professor_id** — Different professors can teach the same course code
+- **course_code** — e.g., "CS101"
+- **semester** — e.g., "Spring 2026" (same course can be taught across semesters)
+
+This means Prof. Smith's CS101 Spring 2026 is a different course from:
+- Prof. Smith's CS101 Fall 2026 (different semester)
+- Prof. Jones's CS101 Spring 2026 (different professor)
+
 ### Email Processing Pipeline
 
 1. Gmail Pub/Sub notification → webhook
@@ -245,7 +256,7 @@ PostgreSQL 16 with pgvector extension. Key tables:
 - `users` — id, name, email, email_verified, role (professor/student), created_at
 - `magic_links` — id, user_id, token_hash, expires_at, used_at
 - `integrations` — id, user_id, provider, status, encrypted tokens, provider_metadata (JSONB)
-- `courses` — course config, plus-address, settings (references users.id for professor)
+- `courses` — course config, plus-address, settings (unique per professor + course_code + semester)
 - `course_materials` + `material_chunks` — uploaded docs + vector embeddings
 - `students` + `enrollments` — roster management
 - `emails` — incoming emails + classification + status

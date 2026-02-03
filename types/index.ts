@@ -76,3 +76,36 @@ export interface GroupedEmails {
   schedule_changes: CategorizedEmail[]
   general: CategorizedEmail[]
 }
+
+// CourseFlow types
+export interface CourseSettings {
+  auto_reply_enabled: boolean
+  confidence_threshold: number
+  disclaimer: string
+}
+
+export interface CourseFlowCourse {
+  id: string
+  professor_id: string
+  name: string
+  course_code: string
+  semester: string
+  plus_address: string
+  status: 'active' | 'archived'
+  settings: CourseSettings
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateCourseInput {
+  name: string
+  course_code: string
+  semester: string
+}
+
+export interface UpdateCourseInput {
+  name?: string
+  course_code?: string
+  semester?: string
+  settings?: Partial<CourseSettings>
+}

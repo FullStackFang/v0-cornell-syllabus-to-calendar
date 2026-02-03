@@ -6,6 +6,18 @@
 
 ---
 
+## Important: Database Migrations
+
+**Supabase does not auto-sync from `db/schema.sql`.** When any task adds or modifies database tables:
+
+1. The SQL is added to `db/schema.sql` as a reference
+2. **You must manually run the SQL in Supabase SQL Editor**
+3. Claude Code should explicitly tell you when SQL needs to be run and provide the exact queries
+
+If Claude Code updates `db/schema.sql` without telling you to run SQL in Supabase, ask for the specific queries to execute.
+
+---
+
 ## Architectural Note
 
 > **This task list reflects a major architectural shift from the original design.**
@@ -49,12 +61,14 @@
 
 ### 1.2 Database
 
+> **Note:** After updating `db/schema.sql`, you must run the SQL in **Supabase SQL Editor** manually.
+
 - [ ] **Write `db/schema.sql`** — full schema with auth decoupled from Gmail:
   - `users` table — id, name, email, email_verified, role (professor/student), password_hash (nullable, for future), created_at, last_login_at
   - `magic_links` table — id, user_id, token_hash, expires_at, used_at
   - `sessions` table — id, user_id, token_hash, expires_at, created_at (or use JWT-only, no table)
   - `integrations` table — id, user_id, provider (gmail, google_calendar, canvas, etc.), status (connected/disconnected/paused), access_token (encrypted), refresh_token (encrypted), token_expiry, provider_metadata (JSONB — history_id, watch_expiry, etc.), connected_at, disconnected_at
-  - `courses` — professor_id references users(id), plus_address computed from user email + course_code
+  - `courses` — **unique per (professor_id, course_code, semester)**. Different professors can teach same course; same professor can teach same course in different semesters. plus_address computed from user email + course_code.
   - Remaining tables unchanged: course_materials, material_chunks, students, enrollments, emails, auto_responses, faq_entries, feedback_signals, chat_messages
 - [ ] **Create migration runner** — simple script that applies `.sql` files in order
 - [ ] **Create `lib/db.ts`** — PostgreSQL connection pool, typed query helpers
@@ -160,19 +174,25 @@
     - Canvas LMS — "Import roster and assignments"
     - Outlook — "For universities on Microsoft 365"
 
-### 1.5 Course Management
+### 1.5 Course Management ✅ COMPLETED
 
-- [ ] **`POST /api/courses`** — create course
+> **Manual step required:** Run the `courses` table SQL in Supabase SQL Editor (see `db/schema.sql`).
+
+- [x] **`courses` table schema** — added to `db/schema.sql` with RLS policies
+- [x] **`POST /api/courses`** — create course
   - Input: name, course_code, semester
   - Compute plus_address: `{email_local}+{course_code}@{domain}` (from user record)
   - Validate course_code uniqueness per professor
-  - **If Gmail not connected:** still create course, but show banner: "Connect Gmail in Settings → Integrations to start monitoring student emails"
   - Return course with plus_address for professor to share
-- [ ] **`GET /api/courses`** — list professor's courses
-- [ ] **`GET /api/courses/:id`** — get course details (include Gmail connection status for UI hints)
-- [ ] **`PATCH /api/courses/:id`** — update settings (auto_reply, threshold, disclaimer)
-- [ ] **`DELETE /api/courses/:id`** — soft archive (set status = 'archived')
-- [ ] **Basic course management UI** — create course form, course list, settings page
+- [x] **`GET /api/courses`** — list professor's courses
+- [x] **`GET /api/courses/:id`** — get course details
+- [x] **`PATCH /api/courses/:id`** — update settings (name, semester, course_code, settings)
+- [x] **`DELETE /api/courses/:id`** — soft archive (set status = 'archived')
+- [x] **Course management UI** (`/courses` page)
+  - Create course dialog with form validation
+  - Course cards with plus-address copy button
+  - Archive confirmation dialog
+  - Navigation from user dropdown menu
   - Show plus-address prominently with copy button
   - If Gmail not connected: contextual nudge to connect (not blocking)
 

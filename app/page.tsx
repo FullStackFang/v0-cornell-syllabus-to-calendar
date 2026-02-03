@@ -25,8 +25,28 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { RightPanel } from "@/components/right-panel"
-import type { SyllabusData, EmailMessage, CalendarEvent } from "@/types"
+import type { SyllabusData, EmailMessage, CalendarEvent, CourseFlowCourse } from "@/types"
+
+// Course match info from upload API
+interface CourseMatch {
+  status: "existing" | "new"
+  course?: CourseFlowCourse
+  suggestedCourse?: {
+    name: string
+    course_code: string
+    semester: string
+  }
+  similarCourses?: Array<{ id: string; name: string; course_code: string; semester: string }>
+}
 
 // Helper to calculate end time from start time and duration
 function calculateEndTime(startTime: string, durationHours: number): string {
@@ -44,6 +64,12 @@ export default function HomePage() {
   const [isAddingToCalendar, setIsAddingToCalendar] = useState(false)
   const [eventsAdded, setEventsAdded] = useState(false)
   const [isFindingEmails, setIsFindingEmails] = useState(false)
+
+  // Course creation from syllabus
+  const [courseMatch, setCourseMatch] = useState<CourseMatch | null>(null)
+  const [uploadedFileInfo, setUploadedFileInfo] = useState<{ filename: string; fileHash: string } | null>(null)
+  const [showCourseDialog, setShowCourseDialog] = useState(false)
+  const [isCreatingCourse, setIsCreatingCourse] = useState(false)
 
   // Magic link form state
   const [email, setEmail] = useState("")
@@ -167,14 +193,75 @@ export default function HomePage() {
 
       const data = await res.json()
 
+      // Handle duplicate file
+      if (data.duplicate) {
+        alert(`This file has already been uploaded${data.existingMaterial?.course ? ` to ${data.existingMaterial.course.name}` : ""}.`)
+        return
+      }
+
       // Set syllabus data to show in right panel
       setSyllabusData(data.data)
       setRightPanelTab("syllabus")
+
+      // Store file info and course match for potential course creation
+      if (data.fileHash && data.filename) {
+        setUploadedFileInfo({ filename: data.filename, fileHash: data.fileHash })
+      }
+      if (data.courseMatch) {
+        setCourseMatch(data.courseMatch)
+        // Show course creation dialog if it's a new course
+        if (data.courseMatch.status === "new") {
+          setShowCourseDialog(true)
+        }
+      }
     } catch (error) {
       console.error("Upload error:", error)
       alert(error instanceof Error ? error.message : "Failed to process syllabus. Please try again.")
     } finally {
       setIsProcessing(false)
+    }
+  }
+
+  // Create course from syllabus
+  const handleCreateCourseFromSyllabus = async () => {
+    if (!courseMatch?.suggestedCourse || !uploadedFileInfo || !syllabusData) return
+
+    setIsCreatingCourse(true)
+    try {
+      const res = await fetch("/api/courses/from-syllabus", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: courseMatch.suggestedCourse.name,
+          course_code: courseMatch.suggestedCourse.course_code,
+          semester: courseMatch.suggestedCourse.semester,
+          filename: uploadedFileInfo.filename,
+          fileHash: uploadedFileInfo.fileHash,
+          extractedText: JSON.stringify(syllabusData), // Store parsed data as text for now
+        }),
+      })
+
+      if (!res.ok) {
+        const error = await res.json()
+        throw new Error(error.error || "Failed to create course")
+      }
+
+      const data = await res.json()
+
+      // Update course match to show it's now an existing course
+      setCourseMatch({
+        status: "existing",
+        course: data.course,
+      })
+      setShowCourseDialog(false)
+
+      // Optional: redirect to course page
+      // router.push(`/courses/${data.course.id}`)
+    } catch (error) {
+      console.error("Create course error:", error)
+      alert(error instanceof Error ? error.message : "Failed to create course")
+    } finally {
+      setIsCreatingCourse(false)
     }
   }
 
@@ -517,6 +604,10 @@ Group results by urgency - what's due today or soon first, then recent items, th
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onClick={() => router.push("/courses")}>
+                <BookOpen className="w-4 h-4 mr-2" />
+                Courses
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => router.push("/settings/integrations")}>
                 <Settings className="w-4 h-4 mr-2" />
                 Integrations
@@ -559,6 +650,67 @@ Group results by urgency - what's due today or soon first, then recent items, th
           />
         </div>
       </main>
+
+      {/* Course Creation Dialog */}
+      <Dialog open={showCourseDialog} onOpenChange={setShowCourseDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Course from Syllabus</DialogTitle>
+            <DialogDescription>
+              We detected course information from your syllabus. Would you like to create this course?
+            </DialogDescription>
+          </DialogHeader>
+
+          {courseMatch?.suggestedCourse && (
+            <div className="py-4 space-y-3">
+              <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Course Name</span>
+                  <span className="text-sm font-medium">{courseMatch.suggestedCourse.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Course Code</span>
+                  <span className="text-sm font-mono font-medium">{courseMatch.suggestedCourse.course_code}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Semester</span>
+                  <span className="text-sm font-medium">{courseMatch.suggestedCourse.semester}</span>
+                </div>
+              </div>
+
+              {courseMatch.similarCourses && courseMatch.similarCourses.length > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  <p className="mb-1">You have similar courses:</p>
+                  <ul className="list-disc list-inside">
+                    {courseMatch.similarCourses.map(c => (
+                      <li key={c.id}>{c.course_code} - {c.semester}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCourseDialog(false)}>
+              Skip for Now
+            </Button>
+            <Button onClick={handleCreateCourseFromSyllabus} disabled={isCreatingCourse}>
+              {isCreatingCourse ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <BookOpen className="w-4 h-4 mr-2" />
+                  Create Course
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

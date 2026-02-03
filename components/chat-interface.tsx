@@ -27,6 +27,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [modelName, setModelName] = useState<string | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -43,6 +44,14 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     }
     prevMessageCountRef.current = messages.length
   }, [messages.length, scrollToBottom])
+
+  // Fetch model name on mount
+  useEffect(() => {
+    fetch("/api/config")
+      .then(res => res.json())
+      .then(data => setModelName(data.modelName))
+      .catch(() => setModelName(null))
+  }, [])
 
   // Programmatic message sending (exposed via ref)
   const sendMessageProgrammatically = useCallback(async (content: string) => {
@@ -308,6 +317,13 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             )}
           </Button>
         </form>
+        {modelName && (
+          <div className="text-center mt-2">
+            <span className="text-xs text-muted-foreground">
+              Powered by Claude {modelName}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -3,6 +3,10 @@ import type { SyllabusData } from "@/types"
 
 const anthropic = new Anthropic()
 
+// Model can be configured via environment variable
+// Options: claude-sonnet-4-20250514, claude-3-5-haiku-20241022, claude-opus-4-5-20251101
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL || "claude-3-5-haiku-20241022"
+
 const systemPrompt = `You are a syllabus parser. Extract structured information from this course syllabus.
 
 Extract ALL assignments, due dates, class sessions, and exams. If a due date is not explicitly stated, set it to null. If class times are not specified, estimate based on typical academic schedules.
@@ -48,7 +52,7 @@ export async function extractSyllabusData(content: string, type: "text" | "pdf" 
   if (type === "pdf") {
     // Use Claude's native PDF support via document content
     const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: CLAUDE_MODEL,
       max_tokens: 4096,
       messages: [
         {
@@ -88,7 +92,7 @@ export async function extractSyllabusData(content: string, type: "text" | "pdf" 
 
   // Text input
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: CLAUDE_MODEL,
     max_tokens: 4096,
     messages: [
       {

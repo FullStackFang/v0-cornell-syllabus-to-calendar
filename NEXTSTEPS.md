@@ -1,162 +1,175 @@
-# Course Assistant MCP Server - Implementation Log
+# CourseFlow AI - Implementation Progress
 
-## Current Status: Phase 4 Complete
-
-The project has been refactored from a web app to a **pure MCP server** that professors can connect to via Claude Desktop, Cursor, or any MCP client.
+> Web app for professors to manage course communications via Gmail integration.
 
 ---
 
-## What's Been Implemented
+## Current Status: Phase 1 In Progress
 
-### Phase 1-3: Foundation (Complete)
-- [x] Core lib functions (Gmail, Calendar, Drive APIs)
-- [x] Knowledge base management with FAQ matching
-- [x] Agent decision engine with confidence scoring
-- [x] Google Drive storage for persistent state
-- [x] Model selection for cost control (Haiku/Sonnet/Opus)
-- [x] API key encryption for secure storage
+### Completed
 
-### Phase 4: MCP Server (Complete)
-- [x] **`mcp/server.ts`** - Main MCP server entry point
-  - stdio transport for Claude Desktop
-  - CLI commands: `--setup`, `--status`, `--logout`, `--help`
-  - Tool execution handler with 20+ tools
+#### 1.3 Authentication (Magic Link)
+- [x] Supabase Auth integration with magic links
+- [x] `POST /api/auth/magic-link` - Send login email
+- [x] `GET /api/auth/callback` - Handle magic link verification
+- [x] `POST /api/auth/logout` - Sign out
+- [x] Session management via Supabase cookies
+- [x] Auth provider with `useAuth()` hook
+- [x] Landing page with email sign-in form
 
-- [x] **`mcp/auth/google.ts`** - Local OAuth authentication
-  - Browser-based OAuth flow (opens Google consent page)
-  - Encrypted token storage at `~/.course-assistant/credentials.json`
-  - Automatic token refresh
+#### 1.4 Integrations / Connectors System
+- [x] `integrations` table in Supabase (user_id, provider, status, encrypted tokens)
+- [x] `GET /api/integrations` - List user's integrations
+- [x] `GET /api/integrations/gmail/connect` - Initiate Gmail OAuth
+- [x] `GET /api/integrations/gmail/callback` - Handle OAuth callback, store tokens
+- [x] `POST /api/integrations/gmail/toggle` - Pause/resume monitoring
+- [x] `POST /api/integrations/gmail/disconnect` - Revoke and remove tokens
+- [x] Token encryption via `lib/encryption.ts`
+- [x] Token refresh logic in `lib/integrations.ts`
+- [x] Settings/Integrations page UI (`/settings/integrations`)
+- [x] Email mismatch detection (Gmail account must match login email)
 
-- [x] **`mcp/tools/index.ts`** - Tool definitions and registry
-  - Course management tools
-  - Knowledge base tools
-  - Email processing tools
-  - Calendar tools
-  - Analytics tools
+#### Database Schema
+- [x] `profiles` table (extends auth.users)
+- [x] `integrations` table (provider connections)
+- [x] RLS policies for both tables
+- [x] Auto-create profile trigger on signup
 
-- [x] **Package.json updates**
-  - `npm run mcp` - Start MCP server
-  - `npm run mcp:setup` - Run Google OAuth setup
-  - `npm run mcp:status` - Check authentication status
-
----
-
-## Available MCP Tools
-
-### Course Management
-| Tool | Status | Description |
-|------|--------|-------------|
-| `setup_course` | ✅ | Create new course in Drive |
-| `list_courses` | ✅ | Show all courses |
-| `get_course_info` | ✅ | Get course details + stats |
-| `update_settings` | ✅ | Modify course settings |
-
-### Knowledge Base
-| Tool | Status | Description |
-|------|--------|-------------|
-| `sync_syllabus` | ✅ | Store syllabus text |
-| `add_faq` | ✅ | Add Q&A pair |
-| `list_faqs` | ✅ | View all FAQs |
-| `update_faq` | ✅ | Modify existing FAQ |
-| `remove_faq` | ✅ | Delete an FAQ |
-| `search_faqs` | ✅ | Find matching FAQs |
-| `add_key_date` | ✅ | Add important date |
-| `add_policy` | ✅ | Add course policy |
-
-### Email Processing
-| Tool | Status | Description |
-|------|--------|-------------|
-| `check_emails` | ✅ | Poll for student questions |
-| `get_pending` | ✅ | View pending queue |
-| `approve_response` | ✅ | Send AI suggestion |
-| `draft_response` | ✅ | Create email draft |
-| `ignore_question` | ✅ | Remove from queue |
-| `search_emails` | ✅ | General Gmail search |
-| `get_email_thread` | ✅ | Get full thread |
-| `send_email` | ✅ | Send email |
-
-### Calendar
-| Tool | Status | Description |
-|------|--------|-------------|
-| `create_event` | ✅ | Add calendar event |
-| `list_events` | ✅ | View events in range |
-
-### Analytics
-| Tool | Status | Description |
-|------|--------|-------------|
-| `get_stats` | ✅ | Course statistics |
+#### Supporting Libraries
+- [x] `lib/integrations.ts` - Token management, Gmail auth URL
+- [x] `lib/encryption.ts` - Encrypt/decrypt OAuth tokens
+- [x] `lib/supabase/client.ts` - Browser client
+- [x] `lib/supabase/server.ts` - Server client
+- [x] `lib/supabase/middleware.ts` - Session refresh
 
 ---
 
-## What's Left To Do
+## Next Up: Phase 1 Continued
 
-### Phase 5: Testing & Refinement
-- [ ] Test full OAuth flow with real Google credentials
-- [ ] Test all tools end-to-end
-- [ ] Add better error handling and user feedback
-- [ ] Test with Claude Desktop
+### 1.5 Course Management (Completed)
+- [x] `courses` table schema with RLS policies
+- [x] `POST /api/courses` - Create course
+- [x] `GET /api/courses` - List professor's courses
+- [x] `GET /api/courses/:id` - Get course details
+- [x] `PATCH /api/courses/:id` - Update settings
+- [x] `DELETE /api/courses/:id` - Archive course (soft delete)
+- [x] Plus-address generation (`{email_local}+{course_code}@{domain}`)
+- [x] Course management UI (`/courses` page)
+- [x] Create course dialog with form
+- [x] Course cards with copy-to-clipboard plus-address
+- [x] Navigation link from user dropdown menu
 
-### Phase 6: Enhanced Email Processing
-- [ ] Add smarter FAQ matching (embeddings?)
-- [ ] Implement batch approve/reject
-- [ ] Add email templates
-- [ ] Track processed email IDs to avoid duplicates
+### 1.6 Material Upload + Processing (Completed)
+- [x] `course_materials` and `material_chunks` tables with RLS policies
+- [x] pgvector extension for embeddings
+- [x] `POST /api/upload` - Enhanced with course detection and file hashing
+- [x] `POST /api/materials` - Save materials to courses
+- [x] `POST /api/courses/from-syllabus` - Create course + attach syllabus in one step
+- [x] `lib/embeddings.ts` - Text chunking (~500 tokens) and embedding generation
+- [x] `search_material_chunks` PostgreSQL function for semantic search
+- [x] Syllabus-to-course flow in UI (dialog prompts to create course after upload)
 
-### Phase 7: Distribution
-- [ ] Create npm package for easy installation
-- [ ] Add Claude Desktop config generator
-- [ ] Create first-run setup wizard
-- [ ] Write user documentation
+### 1.7 Student Roster (Not Started)
+- [ ] `students` and `enrollments` tables
+- [ ] `POST /api/courses/:id/students` - Add students (single or CSV)
+- [ ] `GET /api/courses/:id/students` - List enrolled students
+- [ ] `DELETE /api/courses/:id/students/:sid` - Remove enrollment
+- [ ] Student roster UI
 
-### Phase 8: Optional Enhancements
-- [ ] Multiple courses per professor
-- [ ] Export Q&A history
-- [ ] Course statistics dashboard
-- [ ] Email notifications for low-confidence questions
+### 1.8 Gmail Email Processing (Not Started)
+- [ ] Gmail Pub/Sub watch setup
+- [ ] `POST /api/gmail/webhook` - Receive notifications
+- [ ] Message fetching via Gmail API
+- [ ] Plus-address detection for course routing
+- [ ] Store emails in database
+
+### 1.9 Email Classification (Not Started)
+- [ ] Classification prompt (categories: policy, content, logistics, etc.)
+- [ ] Confidence scoring
+- [ ] Email embedding generation
+- [ ] Email list UI with filters
+
+### 1.10 Job Queue Setup (Not Started)
+- [ ] BullMQ + Redis configuration
+- [ ] Email processing worker
+- [ ] Worker runner script
 
 ---
 
-## How to Test
+## Phase 2: Intelligence + Responses
 
-### 1. Check Status
+### 2.1-2.4 Response Generation & Approval
+- [ ] Draft response generation with FAQ/material grounding
+- [ ] Professor approval workflow (approve/edit/reply/dismiss)
+- [ ] Sending replies via Gmail API
+- [ ] Auto-reply system with confidence threshold
+
+### 2.5-2.8 FAQ System
+- [ ] Seed FAQ from syllabus
+- [ ] Reactive FAQ generation from novel questions
+- [ ] Anonymization pipeline (FERPA compliance)
+- [ ] FAQ approval workflow
+
+### 2.9-2.10 Feedback & Dashboard
+- [ ] Feedback signal detection
+- [ ] Professor dashboard with analytics
+
+---
+
+## Phase 3: Student Experience
+
+- [ ] Student authentication (magic link + signed invite URLs)
+- [ ] Student invite flow
+- [ ] FAQ browser
+- [ ] Student chatbot
+- [ ] Email status page
+
+---
+
+## Phase 4: Polish + Beta
+
+- [ ] Security hardening
+- [ ] Error handling
+- [ ] Monitoring
+- [ ] UI polish
+- [ ] Deployment
+
+---
+
+## Environment Variables
+
 ```bash
-npm run mcp:status
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbG...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbG...
+
+# App URL
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# Google OAuth (Gmail connector)
+GOOGLE_CLIENT_ID=your-client-id
+GOOGLE_CLIENT_SECRET=your-client-secret
+
+# Encryption (for OAuth tokens)
+ENCRYPTION_SECRET=your-32-byte-base64-secret
+
+# Anthropic (LLM)
+ANTHROPIC_API_KEY=your-anthropic-key
+
+# OpenAI (Embeddings)
+OPENAI_API_KEY=your-openai-key
 ```
 
-### 2. Set Up Authentication
+---
+
+## Development Commands
+
 ```bash
-# Set environment variables first
-export GOOGLE_CLIENT_ID="your-client-id"
-export GOOGLE_CLIENT_SECRET="your-client-secret"
-
-# Run setup (opens browser)
-npm run mcp:setup
-```
-
-### 3. Configure Claude Desktop
-
-Add to `~/.config/claude/claude_desktop_config.json`:
-```json
-{
-  "mcpServers": {
-    "course-assistant": {
-      "command": "npx",
-      "args": ["tsx", "/full/path/to/mcp/server.ts"],
-      "env": {
-        "GOOGLE_CLIENT_ID": "your-client-id",
-        "GOOGLE_CLIENT_SECRET": "your-client-secret"
-      }
-    }
-  }
-}
-```
-
-### 4. Test in Claude Desktop
-```
-"Set up a course called CS 101"
-"Add FAQ: office hours are Tuesdays 3-5pm in Room 205"
-"Check my inbox for student questions"
-"Approve the response to the first question"
+npm install          # Install dependencies
+npm run dev          # Start Next.js dev server (port 3000)
+npm run build        # Production build
+npm run lint         # Run linter
 ```
 
 ---
@@ -164,90 +177,70 @@ Add to `~/.config/claude/claude_desktop_config.json`:
 ## File Structure
 
 ```
-project/
-├── mcp/                          # MCP Server (NEW)
-│   ├── server.ts                 # Main entry point
+app/
+├── api/
 │   ├── auth/
-│   │   └── google.ts             # Local OAuth handler
-│   └── tools/
-│       └── index.ts              # Tool definitions
-│
-├── lib/                          # Core library functions
-│   ├── gmail.ts                  # Gmail API
-│   ├── google-calendar.ts        # Calendar API
-│   ├── drive.ts                  # Drive API
-│   ├── knowledge-base.ts         # KB management
-│   ├── course-config.ts          # Course settings
-│   ├── encryption.ts             # API key encryption
-│   └── agent-decision.ts         # Confidence scoring
-│
-├── app/                          # Next.js web app (optional)
-│   └── api/
-│       ├── mcp/http/             # HTTP MCP endpoint
-│       └── test/                 # Test endpoints
-│
-├── docs/
-│   └── ARCHITECTURE.md           # System architecture
-│
-├── NEXTSTEPS.md                  # This file
-└── CLAUDE.md                     # Claude Code instructions
-```
+│   │   ├── magic-link/route.ts    # Send magic link
+│   │   ├── callback/route.ts       # Verify magic link
+│   │   └── logout/route.ts         # Sign out
+│   ├── integrations/
+│   │   ├── route.ts                # List integrations
+│   │   └── gmail/
+│   │       ├── connect/route.ts    # Start OAuth
+│   │       ├── callback/route.ts   # OAuth callback
+│   │       ├── toggle/route.ts     # Pause/resume
+│   │       └── disconnect/route.ts # Disconnect
+│   ├── email/                      # Email search (existing)
+│   ├── chat/                       # Chat endpoint (existing)
+│   └── calendar/                   # Calendar sync (existing)
+├── settings/
+│   └── integrations/page.tsx       # Integrations UI
+├── page.tsx                        # Landing page
+└── layout.tsx                      # Root layout
 
----
+lib/
+├── supabase/
+│   ├── client.ts                   # Browser client
+│   ├── server.ts                   # Server client
+│   └── middleware.ts               # Session middleware
+├── integrations.ts                 # Token management
+├── encryption.ts                   # Token encryption
+├── gmail.ts                        # Gmail API helpers
+└── anthropic.ts                    # Claude API
 
-## Key Decisions Made
+components/
+├── providers.tsx                   # Auth provider
+└── ui/                             # shadcn components
 
-1. **Pure MCP Server** - No web app required. Professors use Claude Desktop.
-
-2. **BYOK (Bring Your Own Key)** - Professors use their own Claude subscription via their MCP client.
-
-3. **Google Drive Storage** - No database needed. All data in professor's Drive.
-
-4. **Pull Model for Email** - Professor asks "check my inbox" instead of webhooks.
-
-5. **Local OAuth** - Browser popup for auth, tokens stored locally encrypted.
-
-6. **tsx for Development** - Run TypeScript directly without compilation.
-
----
-
-## Dependencies
-
-Key packages used:
-- `@modelcontextprotocol/sdk` - MCP protocol implementation
-- `googleapis` - Google APIs (Gmail, Calendar, Drive)
-- `tsx` - TypeScript execution
-- `zod` - Schema validation
-- `uuid` - Unique IDs
-
----
-
-## Environment Variables
-
-Required:
-```bash
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-```
-
-Optional:
-```bash
-COURSE_ASSISTANT_DATA_DIR=~/.course-assistant  # Default location
+db/
+└── schema.sql                      # Supabase schema
 ```
 
 ---
 
 ## Changelog
 
-### 2025-01-13
-- Created MCP server with stdio transport
-- Implemented local OAuth flow with browser popup
-- Added 20+ tools for course management
-- Updated package.json with MCP scripts
-- Verified server runs with `npm run mcp:status`
+### 2026-02-03
+- Implemented Material Upload + Processing (Section 1.6)
+- Added course_materials and material_chunks tables with pgvector
+- Created syllabus-to-course detection and creation flow
+- Built text chunking and embedding pipeline (lib/embeddings.ts)
+- Added semantic search function for material chunks
+
+### 2026-02-02
+- Implemented Course Management (Section 1.5)
+- Added `courses` table to database schema with RLS policies
+- Created CRUD API routes for courses
+- Built courses page UI with create dialog, course cards, plus-address copy
+- Added navigation link to courses from user dropdown
+
+### 2025-02-02
+- Tested Gmail OAuth flow end-to-end
+- Verified connect/toggle/disconnect all work
+- Confirmed persistence across sessions
 
 ### Previous
-- Implemented core lib functions
-- Added Google Drive storage
-- Added model selection for cost control
-- Created knowledge base with FAQ matching
+- Implemented Supabase Auth with magic links
+- Created Gmail connector system
+- Built integrations settings page
+- Added token encryption

@@ -395,11 +395,12 @@ Gmail (and future integrations) are optional capabilities, not requirements:
 │   │ professor_id(FK)│       │ filename        │       │ content         │  │
 │   │ name            │       │ file_path       │       │ embedding       │  │
 │   │ course_code     │       │ extracted_text  │       │ chunk_index     │  │
-│   │ plus_address    │       │ created_at      │       └─────────────────┘  │
-│   │ auto_reply      │       └─────────────────┘                            │
-│   │ threshold       │                                                      │
-│   │ disclaimer      │       ┌─────────────────┐       ┌─────────────────┐  │
-│   │ settings (JSON) │       │    students     │       │  enrollments    │  │
+│   │ semester        │       │ created_at      │       └─────────────────┘  │
+│   │ plus_address    │       └─────────────────┘                            │
+│   │ status          │                                                      │
+│   │ settings (JSON) │       ┌─────────────────┐       ┌─────────────────┐  │
+│   │ UNIQUE(prof_id, │       │    students     │       │  enrollments    │  │
+│   │  code, semester)│       │─────────────────│       │─────────────────│  │
 │   └────────┬────────┘       │─────────────────│       │─────────────────│  │
 │            │                │ id (PK)         │◄──────│ student_id (FK) │  │
 │            │                │ user_id (FK)    │       │ course_id (FK) ─┼──┤
